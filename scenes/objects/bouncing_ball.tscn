@@ -1,0 +1,43 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/Physics/SpeedLimiter.cs" id="1"]
+[ext_resource type="Script" path="res://src/History/LightHistory.cs" id="2"]
+[ext_resource type="Script" path="res://src/Visuals/DelayedVisual.cs" id="3"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_1"]
+
+[sub_resource type="SphereShape3D" id="SphereShape_1"]
+radius = 0.5
+
+[sub_resource type="PhysicsMaterial" id="PhysMat_1"]
+friction = 0.5
+bounce = 0.8
+
+[sub_resource type="StandardMaterial3D" id="Ghost_1"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 1, 1, 0.25)
+
+[node name="BouncingBall" type="RigidBody3D"]
+physics_material_override = SubResource("PhysMat_1")
+linear_damp = 0.05
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("SphereShape_1")
+
+[node name="SpeedLimiter" type="Node" parent="."]
+script = ExtResource("1")
+
+[node name="LightHistory" type="Node" parent="."]
+script = ExtResource("2")
+
+[node name="Ghost" type="MeshInstance3D" parent="."]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("SphereMesh_1")
+surface_material_override/0 = SubResource("Ghost_1")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="." node_paths=PackedStringArray("History")]
+mesh = SubResource("SphereMesh_1")
+script = ExtResource("3")
+History = NodePath("../LightHistory")
+Albedo = Color(1, 0.3, 0.3, 1)
