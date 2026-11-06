@@ -14,6 +14,9 @@ Godot 4.7.2 (C#, Forward+, Jolt) simulation where physics runs in the present bu
 
 - Build: `dotnet build Lightspeed.csproj`
 - Tests: `dotnet test tests/Lightspeed.Tests`
+- Players download releases with the dependency-free one-liners in [README.md](README.md), which fetch `releases/latest/download/Lightspeed-windows.zip` / `Lightspeed-linux.tar.gz` from GitHub. The asset names must match what `build.ps1 -Package` produces (the tarball unpacks to `linux/`); publishing steps are in BUILDING.md.
+- Releases are cut by pushing a tag `v*` on a commit that is on `main`: `.github/workflows/release.yml` runs the unit tests, builds with `build.sh --package` and publishes the two assets with `gh release create`. Godot and the two export templates are downloaded from the official release (SHA-512 checked) and cached; keep `GODOT_VERSION` in the workflow in step with the local Godot. The default branch is `main`.
+- Release builds for Windows and Linux: `build.ps1` (or `./build.sh`), see [BUILDING.md](BUILDING.md). Presets are in `export_presets.cfg`; output goes to the git-ignored `build/`. It finds Godot through `-Godot`, `$GODOT`, a git-ignored one-line `.godot-path` file, or PATH, and needs the matching export templates (`-InstallTemplates`).
 - Import / load-error check: `<godot> --headless --path . --import`
 - Headless smoke test: `<godot> --headless --path . --quit-after 1000` (the shader is not exercised headless; use a window for rendering checks)
 - Visual check (needs a window): `<godot> --path . -- --screenshot=<file.png>`. Options after `--`:
@@ -38,6 +41,7 @@ Godot 4.7.2 (C#, Forward+, Jolt) simulation where physics runs in the present bu
 - **Ray intervals:** `RetardedRay.Intervals` runs on the CPU every frame per fast part and is uploaded as `iv_count` / `iv_sphere` / `iv_k` (16 slots). Its sample indices are track-relative; `DelayedVisual.UploadIntervals` shifts them to the shared texture window. The shader must only march inside them: anything outside is invisible by construction, and a test enforces that no ray hit falls outside.
 - **Ray shader materials must stay `blend_mix`:** an opaque material that writes `DEPTH` goes through the depth pre-pass, which runs the march twice and drops pixels where the two runs differ by a hair (single-pixel speckles).
 - **Multi-image details:** the shader is `cull_disabled` (reversed-orientation images), invalid vertices are discarded in the fragment stage through the `img_valid` varying, and `MAX_SCAN` in the shader equals `RetardedSolver.MaxScanIterations`.
+- **Export builds must disable the .NET compiler servers** (`UseSharedCompilation=false`, `MSBUILDDISABLENODEREUSE=1`, set in `build.ps1` / `build.sh`): Godot waits for the .NET build's output pipe to close and the servers hold it for about ten minutes, so each export otherwise appears to hang. Run exports through the scripts, not by calling Godot directly from a pipeline.
 - The Godot csproj has no implicit usings (add `using System;`). `Compile Remove="tests/**"` keeps test files out of the game assembly.
 - In `.tscn` files, an `[Export]` that references a node needs `node_paths=PackedStringArray("Prop")` on that node's header, or it loads as null.
 - If the Godot editor is open it may re-save `.tscn` and `project.godot` (adds uids, drops default values such as the 60 Hz tick); re-read a file before editing it.
