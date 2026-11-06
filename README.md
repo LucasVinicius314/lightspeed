@@ -22,7 +22,7 @@ $ProgressPreference='SilentlyContinue'; Invoke-WebRequest https://github.com/Luc
 **Linux (bash)**
 
 ```bash
-curl -fL https://github.com/LucasVinicius314/lightspeed/releases/latest/download/Lightspeed-linux.tar.gz -o Lightspeed-linux.tar.gz && tar -xzf Lightspeed-linux.tar.gz && chmod +x linux/Lightspeed.x86_64 && ./linux/Lightspeed.x86_64
+curl -fL https://github.com/LucasVinicius314/lightspeed/releases/latest/download/Lightspeed-linux.tar.gz -o Lightspeed-linux.tar.gz && mkdir -p Lightspeed && tar -xzf Lightspeed-linux.tar.gz -C Lightspeed && chmod +x Lightspeed/Lightspeed.x86_64 && ./Lightspeed/Lightspeed.x86_64
 ```
 
 Press **Tab** in the game for the settings menu, scroll the mouse wheel to change the speed of light, and **Esc** to

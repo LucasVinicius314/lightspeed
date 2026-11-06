@@ -78,7 +78,7 @@ The repository must be public for anonymous downloads. Each file must stay under
 
 - Settings live in the export presets in `export_presets.cfg` (committed). Edit them in the Godot editor under
   *Project > Export* if you want an icon, a version, or another architecture.
-- `build\` is git-ignored. The Windows zip is plain; the Linux tarball keeps the layout but Windows cannot store the
+- `build\` is git-ignored. The Windows zip is plain; the Linux tarball also holds the contents directly (no wrapping folder) but Windows cannot store the
   executable bit, hence the `chmod +x`.
 - The scripts turn off the .NET compiler servers. Left on, they keep Godot's output pipe open for about ten
   minutes after each export and every build appears to hang.

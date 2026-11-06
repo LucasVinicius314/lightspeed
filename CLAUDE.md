@@ -14,7 +14,7 @@ Godot 4.7.2 (C#, Forward+, Jolt) simulation where physics runs in the present bu
 
 - Build: `dotnet build Lightspeed.csproj`
 - Tests: `dotnet test tests/Lightspeed.Tests`
-- Players download releases with the dependency-free one-liners in [README.md](README.md), which fetch `releases/latest/download/Lightspeed-windows.zip` / `Lightspeed-linux.tar.gz` from GitHub. The asset names must match what `build.ps1 -Package` produces (the tarball unpacks to `linux/`); publishing steps are in BUILDING.md.
+- Players download releases with the dependency-free one-liners in [README.md](README.md), which fetch `releases/latest/download/Lightspeed-windows.zip` / `Lightspeed-linux.tar.gz` from GitHub. The asset names must match what `build.ps1 -Package` produces (the tarball holds the contents directly, with no wrapping folder; the README extracts it with `-C Lightspeed`); publishing steps are in BUILDING.md.
 - Releases are cut by pushing a tag `v*` on a commit that is on `main`: `.github/workflows/release.yml` runs the unit tests, builds with `build.sh --package` and publishes the two assets with `gh release create`. Godot and the two export templates are downloaded from the official release (SHA-512 checked) and cached; keep `GODOT_VERSION` in the workflow in step with the local Godot. The default branch is `main`.
 - Release builds for Windows and Linux: `build.ps1` (or `./build.sh`), see [BUILDING.md](BUILDING.md). Presets are in `export_presets.cfg`; output goes to the git-ignored `build/`. It finds Godot through `-Godot`, `$GODOT`, a git-ignored one-line `.godot-path` file, or PATH, and needs the matching export templates (`-InstallTemplates`).
 - Import / load-error check: `<godot> --headless --path . --import`

@@ -114,8 +114,8 @@ if ($Package) {
             Write-Host "Packaged $zip"
         }
         else {
-            # tar keeps the folder layout; the Linux binary needs `chmod +x` after unpacking (NTFS has no mode bits).
-            tar -czf 'build\Lightspeed-linux.tar.gz' -C build linux
+            # tar packs the folder's contents (no wrapping folder); the Linux binary needs `chmod +x` after unpacking (NTFS has no mode bits).
+            tar -czf 'build\Lightspeed-linux.tar.gz' -C build\linux .
             Write-Host "Packaged build\Lightspeed-linux.tar.gz"
         }
     }

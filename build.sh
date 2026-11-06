@@ -102,7 +102,7 @@ if (( package )); then
       echo "Packaged build/Lightspeed-windows.zip"
     else
       chmod +x build/linux/Lightspeed.x86_64
-      tar -czf build/Lightspeed-linux.tar.gz -C build linux
+      tar -czf build/Lightspeed-linux.tar.gz -C build/linux .
       echo "Packaged build/Lightspeed-linux.tar.gz"
     fi
   done
