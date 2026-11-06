@@ -18,6 +18,7 @@ public partial class SimClock : Node
 
     public static SimClock Instance { get; private set; } = null!;
 
+    /// <summary>Starts at 0; `-- --start-tick=N` begins later to test long-running precision.</summary>
     public long Tick { get; private set; }
     public double Time => Tick * TickDelta;
 
@@ -35,8 +36,12 @@ public partial class SimClock : Node
 
         float initial = InitialC;
         foreach (var arg in OS.GetCmdlineUserArgs())
+        {
             if (arg.StartsWith("--c="))
                 initial = float.Parse(arg["--c=".Length..], CultureInfo.InvariantCulture);
+            else if (arg.StartsWith("--start-tick="))
+                Tick = long.Parse(arg["--start-tick=".Length..], CultureInfo.InvariantCulture);
+        }
         StepIndex = SpeedLadder.Nearest(initial);
     }
 

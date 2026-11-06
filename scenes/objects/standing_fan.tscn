@@ -1,0 +1,108 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/History/LightHistory.cs" id="history"]
+[ext_resource type="Script" path="res://src/Demo/Spinner.cs" id="spinner"]
+[ext_resource type="Script" path="res://src/Visuals/DelayedVisual.cs" id="visual"]
+
+[sub_resource type="CylinderMesh" id="S_Base"]
+top_radius = 0.4
+bottom_radius = 0.4
+height = 0.08
+radial_segments = 24
+rings = 1
+
+[sub_resource type="StandardMaterial3D" id="S_Base_mat"]
+albedo_color = Color(0.3, 0.3, 0.33, 1)
+
+[sub_resource type="CylinderMesh" id="S_Pole"]
+top_radius = 0.04
+bottom_radius = 0.04
+height = 1.4
+radial_segments = 24
+rings = 1
+
+[sub_resource type="StandardMaterial3D" id="S_Pole_mat"]
+albedo_color = Color(0.3, 0.3, 0.33, 1)
+
+[sub_resource type="SphereMesh" id="M_Hub"]
+radius = 0.12
+height = 0.24
+radial_segments = 24
+rings = 12
+
+[sub_resource type="BoxMesh" id="M_Hub_BladeA"]
+size = Vector3(1.8, 0.2, 0.03)
+
+[sub_resource type="BoxMesh" id="M_Hub_BladeB"]
+size = Vector3(1.8, 0.2, 0.03)
+
+[sub_resource type="StandardMaterial3D" id="Ghost"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 1, 1, 0.25)
+
+[node name="Fan" type="Node3D"]
+
+[node name="Base" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.04, 0.0)
+mesh = SubResource("S_Base")
+surface_material_override/0 = SubResource("S_Base_mat")
+
+[node name="Pole" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.78, 0.0)
+mesh = SubResource("S_Pole")
+surface_material_override/0 = SubResource("S_Pole_mat")
+
+[node name="Hub" type="Node3D" parent="."]
+script = ExtResource("spinner")
+position = Vector3(0.0, 1.55, 0.12)
+Axis = Vector3(0.0, 0.0, 1.0)
+AngularSpeed = 3.0
+BoundingRadius = 0.9
+
+[node name="LightHistory" type="Node" parent="Hub"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="Hub" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_Hub")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="Hub" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_Hub")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.8, 0.8, 0.85, 1)
+
+[node name="BladeA" type="Node3D" parent="Hub"]
+
+[node name="LightHistory" type="Node" parent="Hub/BladeA"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="Hub/BladeA" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_Hub_BladeA")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="Hub/BladeA" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_Hub_BladeA")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.3, 0.7, 0.95, 1)
+
+[node name="BladeB" type="Node3D" parent="Hub"]
+rotation = Vector3(0.0, 0.0, 1.5708)
+
+[node name="LightHistory" type="Node" parent="Hub/BladeB"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="Hub/BladeB" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_Hub_BladeB")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="Hub/BladeB" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_Hub_BladeB")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.3, 0.7, 0.95, 1)

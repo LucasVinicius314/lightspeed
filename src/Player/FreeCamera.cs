@@ -35,7 +35,7 @@ public partial class FreeCamera : Camera3D
     {
         switch (@event)
         {
-            case InputEventMouseButton { Pressed: true } when Input.MouseMode != Input.MouseModeEnum.Captured:
+            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } when Input.MouseMode != Input.MouseModeEnum.Captured:
                 // The click that re-locks the mouse is swallowed so it doesn't also step c.
                 Input.MouseMode = Input.MouseModeEnum.Captured;
                 GetViewport().SetInputAsHandled();

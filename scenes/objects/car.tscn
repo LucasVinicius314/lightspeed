@@ -1,0 +1,171 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/History/LightHistory.cs" id="history"]
+[ext_resource type="Script" path="res://src/Demo/CircleMover.cs" id="mover"]
+[ext_resource type="Script" path="res://src/Demo/Spinner.cs" id="spinner"]
+[ext_resource type="Script" path="res://src/Visuals/DelayedVisual.cs" id="visual"]
+
+[sub_resource type="BoxMesh" id="M_root"]
+size = Vector3(2.0, 0.45, 1.0)
+
+[sub_resource type="BoxMesh" id="M_Cabin"]
+size = Vector3(1.0, 0.4, 0.85)
+
+[sub_resource type="CylinderMesh" id="M_WheelFL"]
+top_radius = 0.28
+bottom_radius = 0.28
+height = 0.18
+radial_segments = 24
+rings = 1
+
+[sub_resource type="CylinderMesh" id="M_WheelFR"]
+top_radius = 0.28
+bottom_radius = 0.28
+height = 0.18
+radial_segments = 24
+rings = 1
+
+[sub_resource type="CylinderMesh" id="M_WheelRL"]
+top_radius = 0.28
+bottom_radius = 0.28
+height = 0.18
+radial_segments = 24
+rings = 1
+
+[sub_resource type="CylinderMesh" id="M_WheelRR"]
+top_radius = 0.28
+bottom_radius = 0.28
+height = 0.18
+radial_segments = 24
+rings = 1
+
+[sub_resource type="StandardMaterial3D" id="Ghost"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 1, 1, 0.25)
+
+[node name="Car" type="Node3D"]
+script = ExtResource("mover")
+Center = Vector3(0.0, 0.6, 0.0)
+Radius = 7.0
+AngularSpeed = 0.28
+BoundingRadius = 1.2
+
+[node name="LightHistory" type="Node" parent="."]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="." groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_root")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="." node_paths=PackedStringArray("History")]
+mesh = SubResource("M_root")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.15, 0.35, 0.95, 1)
+
+[node name="Cabin" type="Node3D" parent="."]
+position = Vector3(-0.1, 0.4, 0.0)
+
+[node name="LightHistory" type="Node" parent="Cabin"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="Cabin" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_Cabin")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="Cabin" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_Cabin")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.7, 0.8, 0.95, 1)
+
+[node name="WheelFL" type="Node3D" parent="."]
+script = ExtResource("spinner")
+position = Vector3(0.7, -0.22, 0.55)
+rotation = Vector3(1.5708, 0.0, 0.0)
+Axis = Vector3(0.0, 1.0, 0.0)
+AngularSpeed = -7.0
+BoundingRadius = 0.28
+
+[node name="LightHistory" type="Node" parent="WheelFL"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="WheelFL" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_WheelFL")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="WheelFL" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_WheelFL")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.08, 0.08, 0.08, 1)
+
+[node name="WheelFR" type="Node3D" parent="."]
+script = ExtResource("spinner")
+position = Vector3(0.7, -0.22, -0.55)
+rotation = Vector3(1.5708, 0.0, 0.0)
+Axis = Vector3(0.0, 1.0, 0.0)
+AngularSpeed = -7.0
+BoundingRadius = 0.28
+
+[node name="LightHistory" type="Node" parent="WheelFR"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="WheelFR" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_WheelFR")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="WheelFR" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_WheelFR")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.08, 0.08, 0.08, 1)
+
+[node name="WheelRL" type="Node3D" parent="."]
+script = ExtResource("spinner")
+position = Vector3(-0.7, -0.22, 0.55)
+rotation = Vector3(1.5708, 0.0, 0.0)
+Axis = Vector3(0.0, 1.0, 0.0)
+AngularSpeed = -7.0
+BoundingRadius = 0.28
+
+[node name="LightHistory" type="Node" parent="WheelRL"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="WheelRL" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_WheelRL")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="WheelRL" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_WheelRL")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.08, 0.08, 0.08, 1)
+
+[node name="WheelRR" type="Node3D" parent="."]
+script = ExtResource("spinner")
+position = Vector3(-0.7, -0.22, -0.55)
+rotation = Vector3(1.5708, 0.0, 0.0)
+Axis = Vector3(0.0, 1.0, 0.0)
+AngularSpeed = -7.0
+BoundingRadius = 0.28
+
+[node name="LightHistory" type="Node" parent="WheelRR"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="WheelRR" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_WheelRR")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="WheelRR" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_WheelRR")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.08, 0.08, 0.08, 1)

@@ -3,7 +3,7 @@ using Godot;
 namespace Lightspeed.Debug;
 
 /// <summary>
-/// On-screen performance readout, toggled with F3.
+/// On-screen performance readout, shown in the simple and full debug modes (F3, see DebugMode).
 /// CPU time = script/process + physics + render-thread CPU work. GPU time is the measured
 /// render time of the main viewport. Frame-time values are averaged over each refresh interval.
 /// </summary>
@@ -28,12 +28,19 @@ public partial class ProfilerOverlay : CanvasLayer
 
         _viewport = GetViewport().GetViewportRid();
         RenderingServer.ViewportSetMeasureRenderTime(_viewport, true);
+
+        DebugMode.Changed += ApplyMode;
+        ApplyMode(DebugMode.Current);
     }
+
+    public override void _ExitTree() => DebugMode.Changed -= ApplyMode;
+
+    private void ApplyMode(DebugLabelMode mode) => Visible = mode != DebugLabelMode.None;
 
     public override void _UnhandledKeyInput(InputEvent @event)
     {
         if (@event is InputEventKey { Pressed: true, Echo: false, Keycode: Key.F3 })
-            Visible = !Visible;
+            DebugMode.Cycle();
     }
 
     public override void _Process(double delta)
@@ -52,12 +59,16 @@ public partial class ProfilerOverlay : CanvasLayer
         double vram = Performance.GetMonitor(Performance.Monitor.RenderVideoMemUsed);
         double texMem = Performance.GetMonitor(Performance.Monitor.RenderTextureMemUsed);
         double bufMem = Performance.GetMonitor(Performance.Monitor.RenderBufferMemUsed);
+        double ram = System.Environment.WorkingSet;
+        double engineMem = Performance.GetMonitor(Performance.Monitor.MemoryStatic);
+        double managedMem = System.GC.GetTotalMemory(false);
 
         _label.Text =
             $"Total   {Engine.GetFramesPerSecond(),6:F0} fps  {1000.0 / System.Math.Max(Engine.GetFramesPerSecond(), 1):F2} ms\n" +
             $"CPU     {Fps(cpuMs),6:F0} fps  {cpuMs:F2} ms  (proc {_processMs / _samples:F2} + phys {_physicsMs / _samples:F2} + render {_renderCpuMs / _samples:F2})\n" +
             $"GPU     {Fps(gpuMs),6:F0} fps  {gpuMs:F2} ms\n" +
-            $"VRAM    {Mb(vram):F1} MB  (textures {Mb(texMem):F1}, buffers {Mb(bufMem):F1})";
+            $"VRAM    {Mb(vram):F1} MB  (textures {Mb(texMem):F1}, buffers {Mb(bufMem):F1})\n" +
+            $"RAM     {Mb(ram):F1} MB  (engine {Mb(engineMem):F1}, managed {Mb(managedMem):F1})";
 
         _elapsed = 0;
         _samples = 0;

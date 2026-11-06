@@ -1,0 +1,170 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/History/LightHistory.cs" id="history"]
+[ext_resource type="Script" path="res://src/Demo/CircleMover.cs" id="mover"]
+[ext_resource type="Script" path="res://src/Demo/Spinner.cs" id="spinner"]
+[ext_resource type="Script" path="res://src/Visuals/DelayedVisual.cs" id="visual"]
+
+[sub_resource type="BoxMesh" id="M_root"]
+size = Vector3(2.0, 0.9, 0.9)
+
+[sub_resource type="BoxMesh" id="M_Boom"]
+size = Vector3(1.8, 0.16, 0.16)
+
+[sub_resource type="SphereMesh" id="M_MainRotor"]
+radius = 0.12
+height = 0.24
+radial_segments = 24
+rings = 12
+
+[sub_resource type="BoxMesh" id="M_MainRotor_BladeA"]
+size = Vector3(4.4, 0.04, 0.22)
+
+[sub_resource type="BoxMesh" id="M_MainRotor_BladeB"]
+size = Vector3(4.4, 0.04, 0.22)
+
+[sub_resource type="SphereMesh" id="M_TailRotor"]
+radius = 0.07
+height = 0.14
+radial_segments = 24
+rings = 12
+
+[sub_resource type="BoxMesh" id="M_TailRotor_Blade"]
+size = Vector3(0.9, 0.07, 0.03)
+
+[sub_resource type="StandardMaterial3D" id="Ghost"]
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 1, 1, 0.25)
+
+[node name="Helicopter" type="Node3D"]
+script = ExtResource("mover")
+Center = Vector3(0.0, 5.5, 0.0)
+Radius = 11.0
+AngularSpeed = -0.22
+Bank = 0.2
+BobAmplitude = 0.4
+BobSpeed = 0.8
+BoundingRadius = 3.0
+
+[node name="LightHistory" type="Node" parent="."]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="." groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_root")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="." node_paths=PackedStringArray("History")]
+mesh = SubResource("M_root")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.85, 0.15, 0.15, 1)
+
+[node name="Boom" type="Node3D" parent="."]
+position = Vector3(-1.8, 0.15, 0.0)
+
+[node name="LightHistory" type="Node" parent="Boom"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="Boom" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_Boom")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="Boom" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_Boom")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.6, 0.1, 0.1, 1)
+
+[node name="MainRotor" type="Node3D" parent="."]
+script = ExtResource("spinner")
+position = Vector3(0.0, 0.62, 0.0)
+Axis = Vector3(0.0, 1.0, 0.0)
+AngularSpeed = 0.9
+BoundingRadius = 2.2
+
+[node name="LightHistory" type="Node" parent="MainRotor"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="MainRotor" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_MainRotor")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="MainRotor" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_MainRotor")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.7, 0.7, 0.7, 1)
+
+[node name="BladeA" type="Node3D" parent="MainRotor"]
+
+[node name="LightHistory" type="Node" parent="MainRotor/BladeA"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="MainRotor/BladeA" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_MainRotor_BladeA")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="MainRotor/BladeA" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_MainRotor_BladeA")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.9, 0.9, 0.9, 1)
+
+[node name="BladeB" type="Node3D" parent="MainRotor"]
+rotation = Vector3(0.0, 1.5708, 0.0)
+
+[node name="LightHistory" type="Node" parent="MainRotor/BladeB"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="MainRotor/BladeB" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_MainRotor_BladeB")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="MainRotor/BladeB" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_MainRotor_BladeB")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.9, 0.9, 0.9, 1)
+
+[node name="TailRotor" type="Node3D" parent="."]
+script = ExtResource("spinner")
+position = Vector3(-2.65, 0.2, 0.12)
+Axis = Vector3(0.0, 0.0, 1.0)
+AngularSpeed = 3.0
+BoundingRadius = 0.45
+
+[node name="LightHistory" type="Node" parent="TailRotor"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="TailRotor" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_TailRotor")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="TailRotor" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_TailRotor")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.7, 0.7, 0.7, 1)
+
+[node name="Blade" type="Node3D" parent="TailRotor"]
+
+[node name="LightHistory" type="Node" parent="TailRotor/Blade"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="TailRotor/Blade" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("M_TailRotor_Blade")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="TailRotor/Blade" node_paths=PackedStringArray("History")]
+mesh = SubResource("M_TailRotor_Blade")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.9, 0.9, 0.9, 1)

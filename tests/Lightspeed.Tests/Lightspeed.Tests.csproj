@@ -16,7 +16,10 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\History\RetardedSolver.cs" Link="RetardedSolver.cs" />
+    <Compile Include="..\..\src\History\HistoryTrack.cs" Link="HistoryTrack.cs" />
     <Compile Include="..\..\src\Core\SpeedLadder.cs" Link="SpeedLadder.cs" />
+    <Compile Include="..\..\src\Visuals\TessellationMath.cs" Link="TessellationMath.cs" />
+    <Compile Include="..\..\src\Debug\LightRings.cs" Link="LightRings.cs" />
   </ItemGroup>
 
   <ItemGroup>

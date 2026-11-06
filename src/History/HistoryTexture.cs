@@ -1,26 +1,66 @@
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Godot;
 using Lightspeed.Core;
 
 namespace Lightspeed.History;
 
 /// <summary>
-/// Packs every registered object's history into one float texture for the delayed-visual shader.
-/// One row per object; two texels per sample: (position.xyz, 0) then rotation quaternion (xyzw).
-/// Sample time is implicit: the newest is "now" and each older one is one tick earlier.
-/// Exposes the shared write head and sample count as shader globals.
+/// Packs every object's history into GPU textures for the delayed-visual shader.
+///
+/// <c>lc_history</c> is a Texture2DArray. Each layer holds <see cref="Chunk"/> consecutive time slots, so
+/// a tick only re-uploads the one layer being written, not the whole history. Within a layer, row = object,
+/// and each sample takes two texels: (position.xyz, teleport-flag) then rotation quaternion (xyzw).
+/// <c>lc_meta</c> has one texel per object row: (birth tick, death tick or -1, row in use), with ticks taken
+/// modulo <see cref="TickWrap"/> so float32 never loses precision however long the simulation runs.
+/// Sample time is implicit (the newest slot is "now", each older slot one tick earlier), so no absolute
+/// time is stored. The shared write head, sample count and tick are shader globals.
 /// </summary>
 public partial class HistoryTexture : Node
 {
-    /// <summary>Samples kept per object (10 s at 60 Hz). M4 derives this from max view distance / c.</summary>
-    public const int Capacity = 600;
-    public const int MaxObjects = 64;
+    /// <summary>Time slots per texture layer. Must match CHUNK in the shader.</summary>
+    public const int Chunk = 16;
+    /// <summary>Object rows in the texture. Fixed; the per-tick upload size depends on it.</summary>
+    public const int MaxObjects = 1024;
+    /// <summary>Ticks are stored modulo this. Must match TICK_WRAP in the shader.</summary>
+    public const int TickWrap = 1 << 20;
+
+    private const int MinCapacity = 600;
+    private const int MaxCapacity = 8192; // the shader's binary search covers 2^14 samples
+
+    /// <summary>
+    /// Samples kept per object, derived at startup from <see cref="MaxViewDistance"/> divided by the starting
+    /// speed of light, so light from the farthest viewable object is still in the buffer. Lowering c later
+    /// shrinks the visible range (shown on the HUD) rather than resizing the buffer.
+    /// </summary>
+    public static int Capacity { get; private set; } = MinCapacity;
+
+    [Export] public float MaxViewDistance { get; set; } = 100f;
 
     public static HistoryTexture Instance { get; private set; } = null!;
 
-    private readonly List<LightHistory> _objects = new();
-    private Image _image = null!;
-    private ImageTexture _texture = null!;
+    /// <summary>Samples currently held per object (shared write head).</summary>
+    public int SampleCount => _count;
+    public int ActiveTracks => _tracks.Count;
+
+    /// <summary>Seconds since the newest sample, so the shader sees time between ticks.</summary>
+    public static double FractionalAge => Engine.GetPhysicsInterpolationFraction() * SimClock.TickDelta;
+
+    /// <summary>Seconds since the newest sample of <paramref name="track"/> (older for a despawned object).</summary>
+    public static double AgeOf(HistoryTrack track) =>
+        (SimClock.Instance.Tick - track.LastTick) * SimClock.TickDelta + FractionalAge;
+
+    private readonly List<HistoryTrack> _tracks = new();
+    private readonly Stack<int> _freeRows = new();
+    private int _nextRow;
+
+    private float[][] _layerData = null!;
+    private byte[] _scratch = null!;
+    private Texture2DArray _history = null!;
+    private Image _metaImage = null!;
+    private ImageTexture _metaTexture = null!;
+    private bool _metaDirty;
     private int _head = -1;
     private int _count;
 
@@ -29,44 +69,135 @@ public partial class HistoryTexture : Node
         Instance = this;
         ProcessPhysicsPriority = 2000;
 
-        _image = Image.CreateEmpty(Capacity * 2, MaxObjects, false, Image.Format.Rgbaf);
-        _texture = ImageTexture.CreateFromImage(_image);
+        double seconds = MaxViewDistance / SimClock.Instance.C;
+        int samples = (int)Math.Ceiling(seconds / SimClock.TickDelta);
+        Capacity = (Math.Clamp(samples, MinCapacity, MaxCapacity) + Chunk - 1) / Chunk * Chunk;
 
-        RenderingServer.GlobalShaderParameterAdd("lc_history", RenderingServer.GlobalShaderParameterType.Sampler2D, _texture);
+        int layers = Capacity / Chunk;
+        int floatsPerLayer = Chunk * 2 * MaxObjects * 4;
+        _layerData = new float[layers][];
+        var images = new Godot.Collections.Array<Image>();
+        for (int i = 0; i < layers; i++)
+        {
+            _layerData[i] = new float[floatsPerLayer];
+            images.Add(Image.CreateEmpty(Chunk * 2, MaxObjects, false, Image.Format.Rgbaf));
+        }
+        _scratch = new byte[floatsPerLayer * sizeof(float)];
+        _history = new Texture2DArray();
+        _history.CreateFromImages(images);
+
+        _metaImage = Image.CreateEmpty(1, MaxObjects, false, Image.Format.Rgbaf);
+        _metaTexture = ImageTexture.CreateFromImage(_metaImage);
+
+        RenderingServer.GlobalShaderParameterAdd("lc_history", RenderingServer.GlobalShaderParameterType.Sampler2Darray, _history);
+        RenderingServer.GlobalShaderParameterAdd("lc_meta", RenderingServer.GlobalShaderParameterType.Sampler2D, _metaTexture);
         RenderingServer.GlobalShaderParameterAdd("lc_head", RenderingServer.GlobalShaderParameterType.Int, 0);
         RenderingServer.GlobalShaderParameterAdd("lc_count", RenderingServer.GlobalShaderParameterType.Int, 0);
+        RenderingServer.GlobalShaderParameterAdd("lc_tick", RenderingServer.GlobalShaderParameterType.Int, 0);
         RenderingServer.GlobalShaderParameterAdd("lc_age", RenderingServer.GlobalShaderParameterType.Float, 0f);
         RenderingServer.GlobalShaderParameterAdd("lc_c", RenderingServer.GlobalShaderParameterType.Float, SimClock.Instance.C);
     }
 
-    /// <summary>Seconds since the newest sample, so the shader sees time between ticks.</summary>
-    public static double Age => Engine.GetPhysicsInterpolationFraction() * SimClock.TickDelta;
-
     public override void _Process(double delta) =>
-        RenderingServer.GlobalShaderParameterSet("lc_age", (float)Age);
+        RenderingServer.GlobalShaderParameterSet("lc_age", (float)FractionalAge);
 
-    public int Register(LightHistory history)
+    /// <summary>Allocates a history row. Returns null (and logs an error) when all rows are in use.</summary>
+    public HistoryTrack? CreateTrack()
     {
-        _objects.Add(history);
-        return _objects.Count - 1;
+        int row;
+        if (_freeRows.Count > 0)
+            row = _freeRows.Pop();
+        else if (_nextRow < MaxObjects)
+            row = _nextRow++;
+        else
+        {
+            GD.PushError($"HistoryTexture: all {MaxObjects} object rows are in use; this object will not be visible.");
+            return null;
+        }
+
+        var track = new HistoryTrack(Capacity, row);
+        _tracks.Add(track);
+        return track;
     }
+
+    /// <summary>Smoothed milliseconds the per-tick history update (recording, upload) costs on the CPU.</summary>
+    public double UpdateMs { get; private set; }
 
     public override void _PhysicsProcess(double delta)
     {
+        long start = Stopwatch.GetTimestamp();
+        long tick = SimClock.Instance.Tick;
         _head = (_head + 1) % Capacity;
         if (_count < Capacity)
             _count++;
 
-        foreach (var obj in _objects)
+        int layer = _head / Chunk;
+        int col = _head % Chunk * 2;
+        var data = _layerData[layer];
+
+        for (int i = _tracks.Count - 1; i >= 0; i--)
         {
-            var s = obj[obj.Count - 1];
-            _image.SetPixel(_head * 2, obj.ObjectIndex, new Color(s.Position.X, s.Position.Y, s.Position.Z, 0));
-            _image.SetPixel(_head * 2 + 1, obj.ObjectIndex, new Color(s.Rotation.X, s.Rotation.Y, s.Rotation.Z, s.Rotation.W));
+            var track = _tracks[i];
+            if (track.LastTick == tick)
+                WriteSample(data, track, col);
+            if (track.MetaDirty)
+                WriteMeta(track);
+            if (track.IsExpired(tick))
+            {
+                ReleaseRow(track);
+                _tracks.RemoveAt(i);
+            }
         }
-        _texture.Update(_image);
+
+        // Only the layer written this tick goes to the GPU.
+        Buffer.BlockCopy(data, 0, _scratch, 0, _scratch.Length);
+        _history.UpdateLayer(Image.CreateFromData(Chunk * 2, MaxObjects, false, Image.Format.Rgbaf, _scratch), layer);
+
+        if (_metaDirty)
+        {
+            _metaTexture.Update(_metaImage);
+            _metaDirty = false;
+        }
 
         RenderingServer.GlobalShaderParameterSet("lc_head", _head);
         RenderingServer.GlobalShaderParameterSet("lc_count", _count);
+        RenderingServer.GlobalShaderParameterSet("lc_tick", (int)(tick % TickWrap));
         RenderingServer.GlobalShaderParameterSet("lc_c", SimClock.Instance.C);
+
+        double ms = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        UpdateMs = UpdateMs == 0 ? ms : UpdateMs * 0.95 + ms * 0.05;
+    }
+
+    private static void WriteSample(float[] data, HistoryTrack track, int col)
+    {
+        var s = track.Newest;
+        int o = track.Row * Chunk * 2 * 4 + col * 4;
+        data[o] = s.Position.X;
+        data[o + 1] = s.Position.Y;
+        data[o + 2] = s.Position.Z;
+        data[o + 3] = track.NewestIsBreak ? 1f : 0f;
+        data[o + 4] = s.Rotation.X;
+        data[o + 5] = s.Rotation.Y;
+        data[o + 6] = s.Rotation.Z;
+        data[o + 7] = s.Rotation.W;
+    }
+
+    private void WriteMeta(HistoryTrack track)
+    {
+        track.MetaDirty = false;
+        if (track.BirthTick < 0)
+            return;
+        _metaImage.SetPixel(0, track.Row, new Color(
+            track.BirthTick % TickWrap,
+            track.IsFinished ? track.LastTick % TickWrap : -1f,
+            1f, 0f));
+        _metaDirty = true;
+    }
+
+    private void ReleaseRow(HistoryTrack track)
+    {
+        _metaImage.SetPixel(0, track.Row, new Color(0, 0, 0, 0));
+        _metaDirty = true;
+        _freeRows.Push(track.Row);
     }
 }

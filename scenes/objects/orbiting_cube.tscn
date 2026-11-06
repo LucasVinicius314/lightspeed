@@ -17,7 +17,7 @@ script = ExtResource("1")
 [node name="LightHistory" type="Node" parent="."]
 script = ExtResource("2")
 
-[node name="Ghost" type="MeshInstance3D" parent="."]
+[node name="Ghost" type="MeshInstance3D" parent="." groups=["ghost"]]
 transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
 mesh = SubResource("BoxMesh_1")
 surface_material_override/0 = SubResource("Ghost_1")

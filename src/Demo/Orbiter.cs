@@ -24,9 +24,11 @@ public partial class Orbiter : Node3D
 
     public override void _PhysicsProcess(double delta)
     {
-        float t = (float)SimClock.Instance.Time;
-        float a = AngularSpeed * t;
+        // Phases are reduced in double before narrowing, so they stay exact however long the sim runs.
+        double t = SimClock.Instance.Time;
+        float a = (float)(AngularSpeed * t % System.Math.Tau);
+        float spin = (float)(SpinSpeed * t % System.Math.Tau);
         Position = Center + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * Radius;
-        Basis = new Basis(Vector3.Up, SpinSpeed * t) * new Basis(Vector3.Right, 0.4f);
+        Basis = new Basis(Vector3.Up, spin) * new Basis(Vector3.Right, 0.4f);
     }
 }

@@ -11,19 +11,19 @@ config_version=5
 [application]
 
 config/name="Lightspeed"
-config/features=PackedStringArray("4.7", "Forward Plus")
-config/icon="res://icon.svg"
 run/main_scene="res://scenes/main.tscn"
-
-[display]
-
-window/stretch/mode="canvas_items"
-window/stretch/aspect="expand"
+config/features=PackedStringArray("4.7", "C#", "Forward Plus")
+config/icon="res://icon.svg"
 
 [autoload]
 
 SimClock="*res://src/Core/SimClock.cs"
 HistoryTexture="*res://src/History/HistoryTexture.cs"
+
+[display]
+
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 
 [dotnet]
 
@@ -31,9 +31,9 @@ project/assembly_name="Lightspeed"
 
 [physics]
 
-common/physics_ticks_per_second=60
 3d/physics_engine="Jolt Physics"
 
 [rendering]
 
 rendering_device/driver.windows="d3d12"
+anti_aliasing/quality/screen_space_aa=1

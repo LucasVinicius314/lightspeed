@@ -1,12 +1,13 @@
 using Godot;
 using Lightspeed.Core;
+using Lightspeed.Debug;
 using Lightspeed.History;
 
 namespace Lightspeed.Ui;
 
 /// <summary>
 /// Bottom-centre readout of the speed of light with a progress bar over the whole ladder.
-/// Left click steps c faster, right click steps it slower.
+/// Scrolling the mouse wheel up steps c faster, down steps it slower.
 /// </summary>
 public partial class LightSpeedHud : CanvasLayer
 {
@@ -46,11 +47,15 @@ public partial class LightSpeedHud : CanvasLayer
         box.AddChild(_bar);
 
         _keys = MakeLabel(box, 14);
-        _keys.Text = "[Left click] faster     [Right click] slower     [Esc] free mouse";
+        DebugMode.Changed += _ => RefreshKeys();
+        RefreshKeys();
 
         SimClock.Instance.CChanged += _ => Refresh();
         Refresh();
     }
+
+    private void RefreshKeys() =>
+        _keys.Text = $"[Scroll up] faster     [Scroll down] slower     [Esc] free mouse     [F3] debug: {DebugMode.Describe(DebugMode.Current)}";
 
     private static Label MakeLabel(Control parent, int size)
     {
@@ -71,9 +76,9 @@ public partial class LightSpeedHud : CanvasLayer
     {
         if (@event is not InputEventMouseButton { Pressed: true } click)
             return;
-        if (click.ButtonIndex == MouseButton.Left)
+        if (click.ButtonIndex == MouseButton.WheelUp)
             SimClock.Instance.StepFaster();
-        else if (click.ButtonIndex == MouseButton.Right)
+        else if (click.ButtonIndex == MouseButton.WheelDown)
             SimClock.Instance.StepSlower();
     }
 

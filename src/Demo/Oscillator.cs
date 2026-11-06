@@ -21,7 +21,7 @@ public partial class Oscillator : Node3D
 
     public override void _PhysicsProcess(double delta)
     {
-        float t = (float)SimClock.Instance.Time;
-        Position = Center + Axis.Normalized() * Amplitude * Mathf.Sin(AngularSpeed * t);
+        float phase = (float)(AngularSpeed * SimClock.Instance.Time % System.Math.Tau);
+        Position = Center + Axis.Normalized() * Amplitude * Mathf.Sin(phase);
     }
 }

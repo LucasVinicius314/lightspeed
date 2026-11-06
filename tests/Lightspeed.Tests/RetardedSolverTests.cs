@@ -89,7 +89,7 @@ public class RetardedSolverTests
         var early = Record(60, _ => new Vector3(10, 0, 0));
         var late = Record(150, _ => new Vector3(10, 0, 0));
 
-        Assert.Equal(SolveStatus.NotYetVisible, RetardedSolver.Solve(early, Dt, Vector3.Zero, C, Vector3.Zero).Status);
+        Assert.Equal(SolveStatus.NotVisible, RetardedSolver.Solve(early, Dt, Vector3.Zero, C, Vector3.Zero).Status);
         Assert.Equal(SolveStatus.Ok, RetardedSolver.Solve(late, Dt, Vector3.Zero, C, Vector3.Zero).Status);
     }
 
@@ -97,7 +97,7 @@ public class RetardedSolverTests
     public void Empty_history_is_hidden()
     {
         var r = RetardedSolver.Solve(new Samples([]), Dt, Vector3.Zero, C, Vector3.Zero);
-        Assert.Equal(SolveStatus.NotYetVisible, r.Status);
+        Assert.Equal(SolveStatus.NotVisible, r.Status);
     }
 
     [Fact]
