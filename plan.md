@@ -15,6 +15,7 @@
 | M4 Robustness and polish | Done (see notes) |
 | Demo machines: car, helicopter, standing fan | Done |
 | Edge tessellation so shapes can warp | Done for primitive meshes |
+| Windows and Linux builds (`build.ps1` / `build.sh`) | Done |
 | Multi-image rendering for parts at or above c ("Light Echoes") | Done (see notes) |
 | Exact per-pixel rendering for fast primitives ("Exact rays", the default) | Done (see notes) |
 | Settings menu (Tab) for every option | Done |

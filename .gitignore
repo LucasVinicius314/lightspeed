@@ -7,3 +7,7 @@
 bin/
 obj/
 *.user
+
+# Builds and local tooling
+/build/
+.godot-path
