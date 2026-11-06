@@ -1,0 +1,147 @@
+using System;
+using System.Globalization;
+using System.Linq;
+using Godot;
+
+namespace Lightspeed.Core;
+
+/// <summary>How a part that outruns its own light is drawn.</summary>
+public enum FastPartRendering
+{
+    /// <summary>One image per vertex: the solver's single answer. Tears fast parts.</summary>
+    SingleImage = 0,
+    /// <summary>Light Echoes: the mesh is drawn once per image, each vertex linked to its image of the same rank.</summary>
+    Echoes = 1,
+    /// <summary>Exact rays: every pixel traces its own light ray back to the moving shape. Primitives only; others use Echoes.</summary>
+    Rays = 2,
+}
+
+/// <summary>
+/// User-adjustable settings that survive between runs (user://settings.cfg). Change a value, then call
+/// <see cref="Commit"/> to save it and tell listeners. Scripted runs (`--screenshot`, `--no-settings`)
+/// ignore the saved file and never write it, so verification is repeatable.
+/// The speed of light, time scale and the debug toggles are not here: they live with their owners.
+/// </summary>
+public static class GameSettings
+{
+    public const float DefaultFov = 85f;
+    public const float DefaultMouseSensitivity = 0.0018f;
+    public const float DefaultFlySpeed = 4f;
+    public const float DefaultMaxEdgeLength = 0.2f;
+    public const int DefaultMaxImages = 8;
+
+    private const string Path = "user://settings.cfg";
+    private static readonly bool Persist;
+
+    /// <summary>
+    /// A part that outruns its own light is seen at several moments at once. This picks how those images are
+    /// drawn; parts slower than light always use the single-image path.
+    /// </summary>
+    public static FastPartRendering FastParts { get; set; }
+
+    /// <summary>Most echoes drawn per part in Light Echoes mode; each is one more draw of its mesh.</summary>
+    public static int MaxImages { get; set; }
+
+    /// <summary>Longest mesh edge in metres. Shorter lets shapes warp more smoothly but costs vertices.</summary>
+    public static float MaxEdgeLength { get; set; }
+
+    /// <summary>Use the CPU reference solve (one image, object centre) instead of the shader.</summary>
+    public static bool CpuSolver { get; set; }
+
+    public static float Fov { get; set; }
+    public static float MouseSensitivity { get; set; }
+    public static float FlySpeed { get; set; }
+    public static bool LimitToC { get; set; }
+    public static bool Fxaa { get; set; }
+    public static bool Vsync { get; set; }
+    public static bool Fullscreen { get; set; }
+
+    public static event Action? Changed;
+
+    static GameSettings()
+    {
+        var args = OS.GetCmdlineUserArgs();
+        Persist = !args.Any(a => a.StartsWith("--screenshot") || a == "--no-settings");
+        ResetValues();
+        if (Persist)
+            Load();
+
+        foreach (var arg in args)
+        {
+            if (arg == "--cpu")
+                CpuSolver = true;
+            else if (arg == "--no-echoes")
+                FastParts = FastPartRendering.SingleImage;
+            else if (arg == "--echoes")
+                FastParts = FastPartRendering.Echoes;
+            else if (arg == "--rays")
+                FastParts = FastPartRendering.Rays;
+            else if (arg.StartsWith("--max-edge="))
+                MaxEdgeLength = float.Parse(arg["--max-edge=".Length..], CultureInfo.InvariantCulture);
+        }
+    }
+
+    public static void Reset()
+    {
+        ResetValues();
+        Commit();
+    }
+
+    /// <summary>Saves and notifies listeners.</summary>
+    public static void Commit()
+    {
+        if (Persist)
+            Save();
+        Changed?.Invoke();
+    }
+
+    private static void ResetValues()
+    {
+        FastParts = FastPartRendering.Rays;
+        MaxImages = DefaultMaxImages;
+        MaxEdgeLength = DefaultMaxEdgeLength;
+        CpuSolver = false;
+        Fov = DefaultFov;
+        MouseSensitivity = DefaultMouseSensitivity;
+        FlySpeed = DefaultFlySpeed;
+        LimitToC = false;
+        Fxaa = true;
+        Vsync = true;
+        Fullscreen = false;
+    }
+
+    private static void Load()
+    {
+        var config = new ConfigFile();
+        if (config.Load(Path) != Error.Ok)
+            return;
+        FastParts = (FastPartRendering)(int)config.GetValue("light", "fast_parts", (int)FastParts);
+        MaxImages = (int)config.GetValue("light", "max_images", MaxImages);
+        MaxEdgeLength = (float)(double)config.GetValue("light", "max_edge", MaxEdgeLength);
+        CpuSolver = (bool)config.GetValue("light", "cpu_solver", CpuSolver);
+        Fov = (float)(double)config.GetValue("camera", "fov", Fov);
+        MouseSensitivity = (float)(double)config.GetValue("camera", "sensitivity", MouseSensitivity);
+        FlySpeed = (float)(double)config.GetValue("camera", "speed", FlySpeed);
+        LimitToC = (bool)config.GetValue("camera", "limit_to_c", LimitToC);
+        Fxaa = (bool)config.GetValue("display", "fxaa", Fxaa);
+        Vsync = (bool)config.GetValue("display", "vsync", Vsync);
+        Fullscreen = (bool)config.GetValue("display", "fullscreen", Fullscreen);
+    }
+
+    private static void Save()
+    {
+        var config = new ConfigFile();
+        config.SetValue("light", "fast_parts", (int)FastParts);
+        config.SetValue("light", "max_images", MaxImages);
+        config.SetValue("light", "max_edge", (double)MaxEdgeLength);
+        config.SetValue("light", "cpu_solver", CpuSolver);
+        config.SetValue("camera", "fov", (double)Fov);
+        config.SetValue("camera", "sensitivity", (double)MouseSensitivity);
+        config.SetValue("camera", "speed", (double)FlySpeed);
+        config.SetValue("camera", "limit_to_c", LimitToC);
+        config.SetValue("display", "fxaa", Fxaa);
+        config.SetValue("display", "vsync", Vsync);
+        config.SetValue("display", "fullscreen", Fullscreen);
+        config.Save(Path);
+    }
+}

@@ -101,6 +101,107 @@ public static class RetardedSolver
         return new RetardedPose(SolveStatus.Ok, pos, rot, (n - 1 - lo - a) * dt + age);
     }
 
+    /// <summary>Longest backward scan, in iterations; matches MAX_SCAN in the shader.</summary>
+    public const int MaxScanIterations = 160;
+
+    /// <summary>
+    /// Finds the <paramref name="image"/>-th (0 = latest) moment whose light reaches the camera now, scanning
+    /// back from the newest sample. A point moving slower than c has exactly one; a point moving faster can
+    /// have several, each a separate image of the same point. Images alternate between normal and reversed
+    /// orientation. <paramref name="speedBound"/> bounds the speed of the point (0 = unknown, scan every
+    /// sample): the scan skips stretches where |f| is too large to reach zero, so it cannot miss a crossing.
+    /// CPU twin of the shader's find_image.
+    /// </summary>
+    public static RetardedPose SolveImage(
+        ISampleSource h, double dt, Vector3 camera, float c, Vector3 localVertex, double age, int image, double speedBound,
+        int maxIterations = MaxScanIterations)
+    {
+        int n = h.Count;
+        var hidden = new RetardedPose(SolveStatus.NotVisible, default, Quaternion.Identity, 0);
+        if (n == 0 || image < 0)
+            return hidden;
+
+        // Largest change of f per sample; infinity makes every step a single sample.
+        double perSample = (speedBound > 0 ? speedBound + c : double.PositiveInfinity) * dt;
+
+        float F(int k)
+        {
+            var s = h[k];
+            return Vector3.Distance(camera, s.Position + Vector3.Transform(localVertex, s.Rotation))
+                   - c * (float)((n - 1 - k) * dt + age);
+        }
+
+        int hi = n - 1;
+        float gHi = F(hi);
+        int count = 0;
+
+        // Alive and the newest sample's light is already here: that sample is the latest image.
+        if (!h.IsFinished && gHi <= 0f)
+        {
+            if (image == 0)
+                return new RetardedPose(SolveStatus.Ok, h[hi].Position, h[hi].Rotation, age);
+            count = 1;
+        }
+
+        for (int it = 0; it < maxIterations && hi > 0; it++)
+        {
+            int step = double.IsInfinity(perSample) ? 1 : (int)Math.Max(1, Math.Floor(Math.Abs(gHi) / perSample));
+            int lo = Math.Max(0, hi - step);
+            float gLo = F(lo);
+
+            if ((gLo <= 0f) == (gHi <= 0f))
+            {
+                hi = lo;
+                gHi = gLo;
+                continue;
+            }
+
+            // A crossing lies in [lo, hi]: narrow it to two neighbouring samples.
+            int a = lo, b = hi;
+            bool negativeAtA = gLo <= 0f;
+            while (b - a > 1)
+            {
+                int mid = (a + b) / 2;
+                if ((F(mid) <= 0f) == negativeAtA) a = mid; else b = mid;
+            }
+
+            // A teleport between them is a gap, not an image.
+            if (!h.BreaksBefore(b))
+            {
+                if (count == image)
+                    return RefineCrossing(h, a, n, dt, age, camera, c, localVertex, F(a), F(b));
+                count++;
+            }
+
+            hi = a;
+            gHi = F(a);
+        }
+        return hidden;
+    }
+
+    private static RetardedPose RefineCrossing(
+        ISampleSource h, int lo, int n, double dt, double age, Vector3 camera, float c, Vector3 localVertex, float f0, float f1)
+    {
+        float a = MathF.Abs(f1 - f0) > 1e-9f ? Math.Clamp(-f0 / (f1 - f0), 0f, 1f) : 0.5f;
+
+        float FAt(float t)
+        {
+            var (p, q) = Interpolate(h, lo, t);
+            return Vector3.Distance(camera, p + Vector3.Transform(localVertex, q))
+                   - c * (float)((n - 1 - lo - t) * dt + age);
+        }
+
+        // One secant step on the sub-bracket that still straddles the crossing.
+        float fa = FAt(a);
+        float aLo = 0f, fLo = f0, aHi = 1f, fHi = f1;
+        if ((fa <= 0f) == (f0 <= 0f)) { aLo = a; fLo = fa; } else { aHi = a; fHi = fa; }
+        if (MathF.Abs(fHi - fLo) > 1e-6f)
+            a = Math.Clamp(aLo - fLo * (aHi - aLo) / (fHi - fLo), 0f, 1f);
+
+        var (pos, rot) = Interpolate(h, lo, a);
+        return new RetardedPose(SolveStatus.Ok, pos, rot, (n - 1 - lo - a) * dt + age);
+    }
+
     private static (Vector3, Quaternion) Interpolate(ISampleSource h, int lo, float a)
     {
         var s0 = h[lo];

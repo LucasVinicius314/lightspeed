@@ -55,7 +55,7 @@ public partial class LightSpeedHud : CanvasLayer
     }
 
     private void RefreshKeys() =>
-        _keys.Text = $"[Scroll up] faster     [Scroll down] slower     [Esc] free mouse     [F3] debug: {DebugMode.Describe(DebugMode.Current)}";
+        _keys.Text = $"[Scroll up] faster     [Scroll down] slower     [Esc] free mouse     [Tab] settings     [F3] debug: {DebugMode.Describe(DebugMode.Current)}";
 
     private static Label MakeLabel(Control parent, int size)
     {
@@ -74,7 +74,7 @@ public partial class LightSpeedHud : CanvasLayer
 
     public override void _UnhandledInput(InputEvent @event)
     {
-        if (@event is not InputEventMouseButton { Pressed: true } click)
+        if (SettingsMenu.IsOpen || @event is not InputEventMouseButton { Pressed: true } click)
             return;
         if (click.ButtonIndex == MouseButton.WheelUp)
             SimClock.Instance.StepFaster();

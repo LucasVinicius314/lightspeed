@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 
 namespace Lightspeed.History;
 
@@ -14,12 +15,36 @@ public sealed class HistoryTrack : ISampleSource
     private int _head = -1;
     private int _count;
 
-    public HistoryTrack(int capacity, int row)
+    // Linear and angular speed between consecutive samples over the last SpeedWindow ticks.
+    private const int SpeedWindow = 120;
+    private readonly float[] _linear = new float[SpeedWindow];
+    private readonly float[] _angular = new float[SpeedWindow];
+    private readonly double _tickSeconds;
+    private int _speedHead;
+
+    public HistoryTrack(int capacity, int row, double tickSeconds = 1.0 / 60)
     {
         _ring = new Sample[capacity];
         _breaks = new bool[capacity];
+        _tickSeconds = tickSeconds;
         Row = row;
     }
+
+    /// <summary>Corners of the box holding every position the part has been recorded at.</summary>
+    public Vector3 BoundsMin { get; private set; }
+    public Vector3 BoundsMax { get; private set; }
+
+    /// <summary>Fastest linear speed (m/s) between consecutive samples over about the last 2 s.</summary>
+    public float PeakLinearSpeed { get; private set; }
+
+    /// <summary>Fastest rotation speed (rad/s) between consecutive samples over about the last 2 s.</summary>
+    public float PeakAngularSpeed { get; private set; }
+
+    /// <summary>
+    /// Upper bound on the speed of any point within <paramref name="radius"/> of the object's origin:
+    /// the origin's speed plus the spin speed at that radius.
+    /// </summary>
+    public float PeakVertexSpeed(float radius) => PeakLinearSpeed + PeakAngularSpeed * radius;
 
     /// <summary>Row of this object in the history texture.</summary>
     public int Row { get; }
@@ -95,11 +120,38 @@ public sealed class HistoryTrack : ISampleSource
 
     private void Push(Sample sample, bool isBreak)
     {
+        RecordSpeed(sample, isBreak);
+        BoundsMin = _count == 0 ? sample.Position : Vector3.Min(BoundsMin, sample.Position);
+        BoundsMax = _count == 0 ? sample.Position : Vector3.Max(BoundsMax, sample.Position);
         _head = (_head + 1) % _ring.Length;
         _ring[_head] = sample;
         _breaks[_head] = isBreak;
         if (_count < _ring.Length)
             _count++;
+    }
+
+    private void RecordSpeed(Sample sample, bool isBreak)
+    {
+        float linear = 0f, angular = 0f;
+        if (_count > 0 && !isBreak) // a teleport is not motion
+        {
+            var prev = _ring[_head];
+            linear = (float)(Vector3.Distance(prev.Position, sample.Position) / _tickSeconds);
+            float dot = MathF.Min(1f, MathF.Abs(Quaternion.Dot(prev.Rotation, sample.Rotation)));
+            angular = (float)(2.0 * Math.Acos(dot) / _tickSeconds);
+        }
+        _linear[_speedHead] = linear;
+        _angular[_speedHead] = angular;
+        _speedHead = (_speedHead + 1) % SpeedWindow;
+
+        float peakLinear = 0f, peakAngular = 0f;
+        for (int i = 0; i < SpeedWindow; i++)
+        {
+            peakLinear = MathF.Max(peakLinear, _linear[i]);
+            peakAngular = MathF.Max(peakAngular, _angular[i]);
+        }
+        PeakLinearSpeed = peakLinear;
+        PeakAngularSpeed = peakAngular;
     }
 
     private int Slot(int k)

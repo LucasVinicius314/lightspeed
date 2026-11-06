@@ -25,15 +25,30 @@ public partial class Spawner : Node3D
     private readonly RandomNumberGenerator _rng = new() { Seed = 1 };
     private readonly List<(LightHistory History, double DieAt)> _alive = new();
     private double _nextSpawn;
+    private bool _timedSpawning = true;
+
+    /// <summary>Spawn a new object every <see cref="Interval"/> sim seconds.</summary>
+    [Export]
+    public bool TimedSpawning
+    {
+        get => _timedSpawning;
+        set
+        {
+            _timedSpawning = value;
+            if (value && IsInsideTree())
+                _nextSpawn = SimClock.Instance.Time + Interval;
+        }
+    }
 
     public override void _Ready()
     {
+        AddToGroup("spawner");
         foreach (var arg in OS.GetCmdlineUserArgs())
         {
             if (!arg.StartsWith("--stress="))
                 continue;
             int count = int.Parse(arg["--stress=".Length..], CultureInfo.InvariantCulture);
-            Interval = 0;
+            _timedSpawning = false;
             Lifetime = 0;
             // A grid of columns so bodies start apart instead of overlapping.
             for (int i = 0; i < count; i++)
@@ -46,7 +61,7 @@ public partial class Spawner : Node3D
     {
         double now = SimClock.Instance.Time;
 
-        while (Interval > 0 && now >= _nextSpawn)
+        while (_timedSpawning && Interval > 0 && now >= _nextSpawn)
         {
             Spawn(new Vector3(
                 _rng.RandfRange(-HalfExtent, HalfExtent), Height, _rng.RandfRange(-HalfExtent, HalfExtent)));
@@ -61,6 +76,23 @@ public partial class Spawner : Node3D
                 _alive.RemoveAt(i);
             }
         }
+    }
+
+    /// <summary>Drops <paramref name="count"/> objects at random places right now.</summary>
+    public void SpawnBurst(int count)
+    {
+        for (int i = 0; i < count; i++)
+            Spawn(new Vector3(
+                _rng.RandfRange(-HalfExtent, HalfExtent), Height + _rng.RandfRange(0, 6), _rng.RandfRange(-HalfExtent, HalfExtent)));
+    }
+
+    /// <summary>Despawns everything this spawner made, so each stays visible until its last light has passed.</summary>
+    public void DespawnAll()
+    {
+        foreach (var (history, _) in _alive)
+            if (GodotObject.IsInstanceValid(history))
+                history.Despawn();
+        _alive.Clear();
     }
 
     private void Spawn(Vector3 position)

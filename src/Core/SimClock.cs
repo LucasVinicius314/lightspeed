@@ -51,10 +51,10 @@ public partial class SimClock : Node
         EmitSignal(SignalName.Ticked, Tick, Time);
     }
 
-    public void StepFaster() => SetStep(StepIndex + 1);
-    public void StepSlower() => SetStep(StepIndex - 1);
+    public void StepFaster() => SetStepIndex(StepIndex + 1);
+    public void StepSlower() => SetStepIndex(StepIndex - 1);
 
-    private void SetStep(int index)
+    public void SetStepIndex(int index)
     {
         index = Mathf.Clamp(index, 0, SpeedLadder.Steps.Count - 1);
         if (index == StepIndex)

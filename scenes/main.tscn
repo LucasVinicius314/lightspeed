@@ -9,6 +9,7 @@
 [ext_resource type="Script" uid="uid://dg2r504wgx2lo" path="res://src/Ui/LightSpeedHud.cs" id="8"]
 [ext_resource type="Script" uid="uid://ba7ibcnd6kkhm" path="res://src/Debug/DebugView.cs" id="9"]
 [ext_resource type="Script" path="res://src/Demo/Spawner.cs" id="10"]
+[ext_resource type="Script" path="res://src/Ui/SettingsMenu.cs" id="15"]
 [ext_resource type="PackedScene" path="res://scenes/objects/car.tscn" id="12"]
 [ext_resource type="PackedScene" path="res://scenes/objects/helicopter.tscn" id="13"]
 [ext_resource type="PackedScene" path="res://scenes/objects/standing_fan.tscn" id="14"]
@@ -94,3 +95,6 @@ script = ExtResource("9")
 
 [node name="LightSpeedHud" type="CanvasLayer" parent="." unique_id=698251943]
 script = ExtResource("8")
+
+[node name="SettingsMenu" type="CanvasLayer" parent="."]
+script = ExtResource("15")

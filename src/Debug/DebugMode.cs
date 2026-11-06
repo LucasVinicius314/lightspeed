@@ -26,9 +26,11 @@ public static class DebugMode
 
     public static event Action<DebugLabelMode>? Changed;
 
-    public static void Cycle()
+    public static void Cycle() => Set((DebugLabelMode)(((int)_current + 1) % 3));
+
+    public static void Set(DebugLabelMode mode)
     {
-        _current = (DebugLabelMode)(((int)_current + 1) % 3);
+        _current = mode;
         var config = new ConfigFile();
         config.SetValue("debug", "mode", (int)_current);
         config.Save(SettingsPath);

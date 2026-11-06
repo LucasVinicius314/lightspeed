@@ -35,8 +35,15 @@ public partial class DebugView : Node3D
 
     private static bool Active => DebugMode.Current == DebugLabelMode.Both;
 
+    public static DebugView? Instance { get; private set; }
+
+    public bool ShowGhosts { get => _ghosts; set { _ghosts = value; ApplyGhosts(); SaveSettings(); } }
+    public bool ShowRings { get => _rings; set { _rings = value; SaveSettings(); } }
+    public bool ShowLabels { get => _labels; set { _labels = value; SaveSettings(); } }
+
     public override void _Ready()
     {
+        Instance = this;
         AddChild(new MeshInstance3D
         {
             Mesh = _mesh,
@@ -78,12 +85,10 @@ public partial class DebugView : Node3D
             return;
         switch (key.Keycode)
         {
-            case Key.Key1: _ghosts = !_ghosts; ApplyGhosts(); break;
-            case Key.Key2: _rings = !_rings; break;
-            case Key.Key3: _labels = !_labels; break;
-            default: return;
+            case Key.Key1: ShowGhosts = !ShowGhosts; break;
+            case Key.Key2: ShowRings = !ShowRings; break;
+            case Key.Key3: ShowLabels = !ShowLabels; break;
         }
-        SaveSettings();
     }
 
     private void LoadSettings()
@@ -225,7 +230,7 @@ public partial class DebugView : Node3D
 
             var pose = RetardedSolver.Solve(track, SimClock.TickDelta, camN, c, System.Numerics.Vector3.Zero, HistoryTexture.AgeOf(track));
             bool show = pose.Status == SolveStatus.Ok;
-            string state = track.IsFinished ? " (despawned)" : "";
+            string state = (track.IsFinished ? " (despawned)" : "") + (visual.IsRayRendered ? " (rays)" : visual.ImageCount > 1 ? $" x{visual.ImageCount} images" : "");
 
             if (listed < MaxListed)
             {

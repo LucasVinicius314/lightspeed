@@ -115,7 +115,7 @@ public partial class HistoryTexture : Node
             return null;
         }
 
-        var track = new HistoryTrack(Capacity, row);
+        var track = new HistoryTrack(Capacity, row, SimClock.TickDelta);
         _tracks.Add(track);
         return track;
     }

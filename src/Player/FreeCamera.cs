@@ -1,5 +1,6 @@
 using Godot;
 using Lightspeed.Core;
+using Lightspeed.Ui;
 
 namespace Lightspeed.Player;
 
@@ -33,6 +34,8 @@ public partial class FreeCamera : Camera3D
 
     public override void _Input(InputEvent @event)
     {
+        if (SettingsMenu.IsOpen)
+            return;
         switch (@event)
         {
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } when Input.MouseMode != Input.MouseModeEnum.Captured:
@@ -53,6 +56,8 @@ public partial class FreeCamera : Camera3D
 
     public override void _Process(double delta)
     {
+        if (SettingsMenu.IsOpen)
+            return;
         var dir = Vector3.Zero;
         if (Input.IsKeyPressed(Key.W)) dir -= GlobalBasis.Z;
         if (Input.IsKeyPressed(Key.S)) dir += GlobalBasis.Z;
