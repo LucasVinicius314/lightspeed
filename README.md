@@ -32,6 +32,6 @@ Notes:
 
 - `releases/latest/download/<file>` always points at the newest release's file with that name, so the commands never
   change. For a specific version use `releases/download/<tag>/<file>` (for example `.../releases/download/v0.1.0/...`).
-  Pre-releases and drafts are skipped by `latest`.
+  Drafts are skipped by `latest`.
 - The repository (and so the release) must be public for these to work without logging in.
 - The exports are self-contained (no Godot or .NET needed). Linux needs a desktop with a Vulkan-capable GPU.

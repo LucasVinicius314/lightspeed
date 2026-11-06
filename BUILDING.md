@@ -59,7 +59,7 @@ The workflow then:
    the 1.2 GB download; bump `GODOT_VERSION` at the top of the workflow when you move to a new Godot);
 4. runs `build.sh --package`, the same build you run locally;
 5. creates the release `v0.1.0` with `Lightspeed-windows.zip` and `Lightspeed-linux.tar.gz` attached and generated
-   release notes. A tag with a dash, such as `v0.2.0-rc1`, is published as a pre-release.
+   release notes. Every tag is published as a full release, never a pre-release.
 
 The README's download commands fetch exactly those two file names from the latest release, so they must not change.
 If a run fails after the tag was pushed, fix the problem, delete the tag (`git push origin :refs/tags/v0.1.0`,

@@ -2,7 +2,7 @@ name: Release
 
 # Pushing a tag like v0.1.0 builds Lightspeed for Windows and Linux and publishes a GitHub release with
 # Lightspeed-windows.zip and Lightspeed-linux.tar.gz (the names the README's download commands expect).
-# The tagged commit must be on main. A tag with a dash (v0.2.0-rc1) is published as a pre-release.
+# The tagged commit must be on main. Every tag is published as a full release (never a pre-release), so `releases/latest` works.
 #
 #   git tag v0.1.0 && git push origin v0.1.0
 
@@ -99,7 +99,6 @@ jobs:
         run: |
           set -euo pipefail
           flags=(--title "Lightspeed ${GITHUB_REF_NAME#v}" --generate-notes --verify-tag)
-          if [[ "$GITHUB_REF_NAME" == *-* ]]; then flags+=(--prerelease); fi
           gh release create "$GITHUB_REF_NAME" \
             build/Lightspeed-windows.zip \
             build/Lightspeed-linux.tar.gz \
