@@ -948,7 +948,7 @@ public partial class NetSession : Node
     }
 
     /// <summary>
-    /// The version the signaling server checks against the bucket's accepted versions: the release tag without its
+    /// The version reported to the signaling server (informational; the server never rejects a version): the release tag without its
     /// leading v, read from the version.txt that release builds carry; "dev" for a build run from source.
     /// Override with `-- --net-version=...`.
     /// </summary>
