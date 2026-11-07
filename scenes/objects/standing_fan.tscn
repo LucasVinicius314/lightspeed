@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://src/History/LightHistory.cs" id="history"]
 [ext_resource type="Script" path="res://src/Demo/Spinner.cs" id="spinner"]
 [ext_resource type="Script" path="res://src/Visuals/DelayedVisual.cs" id="visual"]
+[ext_resource type="Script" path="res://src/Physics/SpeedLimiter.cs" id="limiter"]
 
 [sub_resource type="CylinderMesh" id="S_Base"]
 top_radius = 0.4
@@ -41,17 +42,57 @@ transparency = 1
 shading_mode = 0
 albedo_color = Color(1, 1, 1, 0.25)
 
-[node name="Fan" type="Node3D"]
+[sub_resource type="CylinderShape3D" id="Col_Base"]
+radius = 0.4
+height = 0.08
 
-[node name="Base" type="MeshInstance3D" parent="."]
+[sub_resource type="CylinderShape3D" id="Col_Pole"]
+radius = 0.04
+height = 1.4
+
+[sub_resource type="SphereShape3D" id="Col_Hub"]
+radius = 0.14
+
+[node name="Fan" type="RigidBody3D"]
+mass = 4.0
+center_of_mass_mode = 1
+center_of_mass = Vector3(0, 0.12, 0)
+linear_damp = 0.05
+angular_damp = 0.3
+
+[node name="Base" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.04, 0.0)
-mesh = SubResource("S_Base")
-surface_material_override/0 = SubResource("S_Base_mat")
 
-[node name="Pole" type="MeshInstance3D" parent="."]
+[node name="LightHistory" type="Node" parent="Base"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="Base" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
+mesh = SubResource("S_Base")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="Base" node_paths=PackedStringArray("History")]
+mesh = SubResource("S_Base")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.3, 0.3, 0.33, 1)
+
+[node name="Pole" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.78, 0.0)
+
+[node name="LightHistory" type="Node" parent="Pole"]
+script = ExtResource("history")
+
+[node name="Ghost" type="MeshInstance3D" parent="Pole" groups=["ghost"]]
+transform = Transform3D(1.03, 0, 0, 0, 1.03, 0, 0, 0, 1.03, 0, 0, 0)
 mesh = SubResource("S_Pole")
-surface_material_override/0 = SubResource("S_Pole_mat")
+surface_material_override/0 = SubResource("Ghost")
+
+[node name="DelayedVisual" type="MeshInstance3D" parent="Pole" node_paths=PackedStringArray("History")]
+mesh = SubResource("S_Pole")
+script = ExtResource("visual")
+History = NodePath("../LightHistory")
+Albedo = Color(0.3, 0.3, 0.33, 1)
 
 [node name="Hub" type="Node3D" parent="."]
 script = ExtResource("spinner")
@@ -106,3 +147,19 @@ mesh = SubResource("M_Hub_BladeB")
 script = ExtResource("visual")
 History = NodePath("../LightHistory")
 Albedo = Color(0.3, 0.7, 0.95, 1)
+
+[node name="ColBase" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.04, 0.0)
+shape = SubResource("Col_Base")
+
+[node name="ColPole" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.78, 0.0)
+shape = SubResource("Col_Pole")
+
+[node name="ColHub" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 1.55, 0.12)
+shape = SubResource("Col_Hub")
+
+[node name="SpeedLimiter" type="Node" parent="."]
+script = ExtResource("limiter")
+BoundingRadius = 1.7

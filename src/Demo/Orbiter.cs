@@ -4,7 +4,7 @@ using Lightspeed.Core;
 namespace Lightspeed.Demo;
 
 /// <summary>Deterministic circular motion plus a spin, driven purely by sim time.</summary>
-public partial class Orbiter : Node3D
+public partial class Orbiter : AnimatableBody3D
 {
     [Export] public Vector3 Center { get; set; } = new(0, 1, 0);
     [Export] public float Radius { get; set; } = 4f;

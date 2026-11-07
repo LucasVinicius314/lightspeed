@@ -7,7 +7,7 @@ namespace Lightspeed.Demo;
 /// Drives or flies in a circle at constant speed, nose along the direction of travel, driven purely
 /// by sim time. Optional lean into the turn and vertical bobbing (for the helicopter).
 /// </summary>
-public partial class CircleMover : Node3D
+public partial class CircleMover : AnimatableBody3D
 {
     [Export] public Vector3 Center { get; set; } = Vector3.Zero;
     [Export] public float Radius { get; set; } = 6f;

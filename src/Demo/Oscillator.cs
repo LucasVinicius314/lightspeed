@@ -4,7 +4,7 @@ using Lightspeed.Core;
 namespace Lightspeed.Demo;
 
 /// <summary>Back-and-forth sinusoidal motion along an axis, driven purely by sim time.</summary>
-public partial class Oscillator : Node3D
+public partial class Oscillator : AnimatableBody3D
 {
     [Export] public Vector3 Center { get; set; } = Vector3.Zero;
     [Export] public Vector3 Axis { get; set; } = Vector3.Right;

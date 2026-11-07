@@ -37,7 +37,22 @@ transparency = 1
 shading_mode = 0
 albedo_color = Color(1, 1, 1, 0.25)
 
-[node name="Helicopter" type="Node3D"]
+[sub_resource type="BoxShape3D" id="Col_Body"]
+size = Vector3(2.0, 0.9, 0.9)
+
+[sub_resource type="BoxShape3D" id="Col_Boom"]
+size = Vector3(1.8, 0.16, 0.16)
+
+[sub_resource type="CylinderShape3D" id="Col_Rotor"]
+radius = 2.2
+height = 0.05
+
+[sub_resource type="CylinderShape3D" id="Col_Tail"]
+radius = 0.45
+height = 0.04
+
+[node name="Helicopter" type="AnimatableBody3D"]
+sync_to_physics = false
 script = ExtResource("mover")
 Center = Vector3(0.0, 5.5, 0.0)
 Radius = 11.0
@@ -168,3 +183,18 @@ mesh = SubResource("M_TailRotor_Blade")
 script = ExtResource("visual")
 History = NodePath("../LightHistory")
 Albedo = Color(0.9, 0.9, 0.9, 1)
+
+[node name="ColBody" type="CollisionShape3D" parent="."]
+shape = SubResource("Col_Body")
+
+[node name="ColBoom" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.8, 0.15, 0.0)
+shape = SubResource("Col_Boom")
+
+[node name="ColMainRotor" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0, 0.62, 0.0)
+shape = SubResource("Col_Rotor")
+
+[node name="ColTailRotor" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, -2.65, 0.2, 0.12)
+shape = SubResource("Col_Tail")

@@ -44,7 +44,18 @@ transparency = 1
 shading_mode = 0
 albedo_color = Color(1, 1, 1, 0.25)
 
-[node name="Car" type="Node3D"]
+[sub_resource type="BoxShape3D" id="Col_Body"]
+size = Vector3(2.0, 0.45, 1.0)
+
+[sub_resource type="BoxShape3D" id="Col_Cabin"]
+size = Vector3(1.0, 0.4, 0.85)
+
+[sub_resource type="CylinderShape3D" id="Col_Wheel"]
+radius = 0.28
+height = 0.18
+
+[node name="Car" type="AnimatableBody3D"]
+sync_to_physics = false
 script = ExtResource("mover")
 Center = Vector3(0.0, 0.6, 0.0)
 Radius = 7.0
@@ -169,3 +180,26 @@ mesh = SubResource("M_WheelRR")
 script = ExtResource("visual")
 History = NodePath("../LightHistory")
 Albedo = Color(0.08, 0.08, 0.08, 1)
+
+[node name="ColBody" type="CollisionShape3D" parent="."]
+shape = SubResource("Col_Body")
+
+[node name="ColCabin" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.1, 0.4, 0.0)
+shape = SubResource("Col_Cabin")
+
+[node name="ColWheelFL" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0.7, -0.22, 0.55)
+shape = SubResource("Col_Wheel")
+
+[node name="ColWheelFR" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, 0.7, -0.22, -0.55)
+shape = SubResource("Col_Wheel")
+
+[node name="ColWheelRL" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, -0.7, -0.22, 0.55)
+shape = SubResource("Col_Wheel")
+
+[node name="ColWheelRR" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, -0.7, -0.22, -0.55)
+shape = SubResource("Col_Wheel")

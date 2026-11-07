@@ -45,7 +45,8 @@ public partial class HistoryTexture : Node
     public int ActiveTracks => _tracks.Count;
 
     /// <summary>Seconds since the newest sample, so the shader sees time between ticks.</summary>
-    public static double FractionalAge => Engine.GetPhysicsInterpolationFraction() * SimClock.TickDelta;
+    public static double FractionalAge =>
+        SimClock.Instance.Paused ? SimClock.Instance.FrozenAge : Engine.GetPhysicsInterpolationFraction() * SimClock.TickDelta;
 
     /// <summary>Seconds since the newest sample of <paramref name="track"/> (older for a despawned object).</summary>
     public static double AgeOf(HistoryTrack track) =>
@@ -68,6 +69,7 @@ public partial class HistoryTexture : Node
     {
         Instance = this;
         ProcessPhysicsPriority = 2000;
+        ProcessMode = ProcessModeEnum.Always; // _Process keeps the shader age current; the tick itself skips while paused
 
         double seconds = MaxViewDistance / SimClock.Instance.C;
         int samples = (int)Math.Ceiling(seconds / SimClock.TickDelta);
@@ -125,6 +127,8 @@ public partial class HistoryTexture : Node
 
     public override void _PhysicsProcess(double delta)
     {
+        if (GetTree().Paused)
+            return;
         long start = Stopwatch.GetTimestamp();
         long tick = SimClock.Instance.Tick;
         _head = (_head + 1) % Capacity;

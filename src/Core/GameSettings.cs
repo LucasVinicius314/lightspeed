@@ -16,6 +16,17 @@ public enum FastPartRendering
     Rays = 2,
 }
 
+/// <summary>How the player moves. Cycled with V.</summary>
+public enum CameraMode
+{
+    /// <summary>Free-fly camera: instant response, no collision.</summary>
+    Fly = 0,
+    /// <summary>FPV drone: momentum, banking into turns, vibration and a CRT-style video feed.</summary>
+    Drone = 1,
+    /// <summary>Character controller: gravity, jumping, collides with the world and pushes physics objects.</summary>
+    Walk = 2,
+}
+
 /// <summary>
 /// User-adjustable settings that survive between runs (user://settings.cfg). Change a value, then call
 /// <see cref="Commit"/> to save it and tell listeners. Scripted runs (`--screenshot`, `--no-settings`)
@@ -52,6 +63,15 @@ public static class GameSettings
     public static float MouseSensitivity { get; set; }
     public static float FlySpeed { get; set; }
     public static bool LimitToC { get; set; }
+
+    /// <summary>Current movement mode. Not saved: every run starts flying (`-- --mode=drone|walk` overrides).</summary>
+    public static CameraMode CameraMode { get; set; }
+
+    /// <summary>Show the CRT video-feed effect and on-screen display in drone mode.</summary>
+    public static bool DroneCrt { get; set; }
+
+    /// <summary>Drone pitch from the mouse. Off (the flight-sim norm): push forward to dive. On: push forward to climb.</summary>
+    public static bool DroneInvertPitch { get; set; }
     public static bool Fxaa { get; set; }
     public static bool Vsync { get; set; }
     public static bool Fullscreen { get; set; }
@@ -76,6 +96,8 @@ public static class GameSettings
                 FastParts = FastPartRendering.Echoes;
             else if (arg == "--rays")
                 FastParts = FastPartRendering.Rays;
+            else if (arg.StartsWith("--mode=") && Enum.TryParse<CameraMode>(arg["--mode=".Length..], true, out var mode))
+                CameraMode = mode;
             else if (arg.StartsWith("--max-edge="))
                 MaxEdgeLength = float.Parse(arg["--max-edge=".Length..], CultureInfo.InvariantCulture);
         }
@@ -105,6 +127,9 @@ public static class GameSettings
         MouseSensitivity = DefaultMouseSensitivity;
         FlySpeed = DefaultFlySpeed;
         LimitToC = false;
+        CameraMode = CameraMode.Fly;
+        DroneCrt = true;
+        DroneInvertPitch = false;
         Fxaa = true;
         Vsync = true;
         Fullscreen = false;
@@ -123,6 +148,8 @@ public static class GameSettings
         MouseSensitivity = (float)(double)config.GetValue("camera", "sensitivity", MouseSensitivity);
         FlySpeed = (float)(double)config.GetValue("camera", "speed", FlySpeed);
         LimitToC = (bool)config.GetValue("camera", "limit_to_c", LimitToC);
+        DroneCrt = (bool)config.GetValue("camera", "drone_crt", DroneCrt);
+        DroneInvertPitch = (bool)config.GetValue("camera", "drone_invert_pitch", DroneInvertPitch);
         Fxaa = (bool)config.GetValue("display", "fxaa", Fxaa);
         Vsync = (bool)config.GetValue("display", "vsync", Vsync);
         Fullscreen = (bool)config.GetValue("display", "fullscreen", Fullscreen);
@@ -139,6 +166,8 @@ public static class GameSettings
         config.SetValue("camera", "sensitivity", (double)MouseSensitivity);
         config.SetValue("camera", "speed", (double)FlySpeed);
         config.SetValue("camera", "limit_to_c", LimitToC);
+        config.SetValue("camera", "drone_crt", DroneCrt);
+        config.SetValue("camera", "drone_invert_pitch", DroneInvertPitch);
         config.SetValue("display", "fxaa", Fxaa);
         config.SetValue("display", "vsync", Vsync);
         config.SetValue("display", "fullscreen", Fullscreen);

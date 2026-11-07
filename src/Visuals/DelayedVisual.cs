@@ -58,6 +58,7 @@ public partial class DelayedVisual : MeshInstance3D
     public override void _Ready()
     {
         AddToGroup("delayed_visual");
+        ProcessMode = ProcessModeEnum.Always; // keeps solving against the moving camera while the simulation is paused
         TopLevel = true;
         CastShadow = ShadowCastingSetting.Off; // shadows are M7; the shader reads the camera position
         CustomAabb = new Aabb(new Vector3(-500, -500, -500), new Vector3(1000, 1000, 1000));

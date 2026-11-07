@@ -42,6 +42,11 @@ public partial class ScreenshotCapture : Node
         var camera = GetViewport().GetCamera3D();
         if (Cam is { Length: 5 } && camera != null)
         {
+            if (camera is Player.FreeCamera player)
+            {
+                player.Place(new Vector3(Cam[0], Cam[1], Cam[2]), Cam[3], Cam[4]);
+                return;
+            }
             camera.GlobalPosition = new Vector3(Cam[0], Cam[1], Cam[2]);
             camera.RotationDegrees = new Vector3(Cam[4], Cam[3], 0);
         }

@@ -9,7 +9,7 @@ namespace Lightspeed.Demo;
 /// break so the visual is not interpolated across it: you see the old place until its last light has
 /// passed, then nothing, then the new place once its first light arrives.
 /// </summary>
-public partial class Teleporter : Node3D
+public partial class Teleporter : AnimatableBody3D
 {
     [Export] public Vector3[] Positions { get; set; } = { Vector3.Zero };
     [Export] public double Interval { get; set; } = 3;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Godot;
 using Lightspeed.Core;
 using Lightspeed.Debug;
@@ -9,8 +10,10 @@ using Lightspeed.Player;
 namespace Lightspeed.Ui;
 
 /// <summary>
-/// Settings menu (Tab). Opening it frees the mouse and stops the camera; every control reads and writes the
-/// same state the hotkeys use, so the two stay in step. Also owns F1 (shader / CPU solve).
+/// Settings menu (Tab), one tab per section, plus the Controls tab (H) listing every keybind. Opening it frees
+/// the mouse and stops the camera; every control reads and writes the same state the hotkeys use, so the two
+/// stay in step. The panel has a fixed width: long values are clipped, never allowed to widen it.
+/// Also owns F1 (shader / CPU solve).
 /// </summary>
 public partial class SettingsMenu : CanvasLayer
 {
@@ -19,6 +22,8 @@ public partial class SettingsMenu : CanvasLayer
     private readonly List<Action> _refresh = new();
     private Control _panel = null!;
     private VBoxContainer _box = null!;
+    private VBoxContainer _outer = null!;
+    private TabContainer _tabs = null!;
     private double _sinceRefresh;
     private bool _scripted;
 
@@ -33,13 +38,21 @@ public partial class SettingsMenu : CanvasLayer
         BuildLightSection();
         BuildSimulationSection();
         BuildCameraSection();
+        BuildControlsSection();
         BuildDebugSection();
         BuildDisplaySection();
         BuildFooter();
 
         _panel.Visible = false;
         foreach (var arg in OS.GetCmdlineUserArgs())
-            if (arg == "--open-menu") // for screenshots
+            if (arg.StartsWith("--menu-tab=")) // for screenshots: which tab to show
+            {
+                string wanted = arg["--menu-tab=".Length..];
+                for (int i = 0; i < _tabs.GetTabCount(); i++)
+                    if (string.Equals(_tabs.GetChild(i).Name, wanted, StringComparison.OrdinalIgnoreCase))
+                        _tabs.CurrentTab = i;
+            }
+            else if (arg == "--open-menu") // for screenshots
             {
                 IsOpen = true;
                 _panel.Visible = true;
@@ -63,6 +76,19 @@ public partial class SettingsMenu : CanvasLayer
         if (key.Keycode == Key.Tab || (key.Keycode == Key.Escape && IsOpen))
         {
             Toggle();
+            GetViewport().SetInputAsHandled();
+        }
+        else if (key.Keycode == Key.H)
+        {
+            // H opens the menu on the Controls tab, or closes it when that tab is already showing.
+            if (IsOpen && _tabs.CurrentTab == ControlsTab())
+                Toggle();
+            else
+            {
+                if (!IsOpen)
+                    Toggle();
+                _tabs.CurrentTab = ControlsTab();
+            }
             GetViewport().SetInputAsHandled();
         }
     }
@@ -100,6 +126,14 @@ public partial class SettingsMenu : CanvasLayer
         }
     }
 
+    private int ControlsTab()
+    {
+        for (int i = 0; i < _tabs.GetTabCount(); i++)
+            if (_tabs.GetChild(i).Name == "Controls")
+                return i;
+        return 0;
+    }
+
     private void RefreshAll()
     {
         _sinceRefresh = 0;
@@ -115,12 +149,8 @@ public partial class SettingsMenu : CanvasLayer
         Slider("Speed of light", 0, SpeedLadder.Steps.Count - 1, 1,
             () => SimClock.Instance.StepIndex,
             v => SimClock.Instance.SetStepIndex((int)v),
-            v =>
-            {
-                var step = SpeedLadder.Steps[(int)v];
-                return SpeedLadder.FormatSpeed(step.Value) + (step.Name != null ? $" ({step.Name})" : "");
-            },
-            "Also on the mouse wheel.");
+            v => SpeedLadder.FormatSpeed(SpeedLadder.Steps[(int)v].Value),
+            "Also on the mouse wheel and the Up / Down arrow keys.");
         Choice("Fast parts",
             new[] { "One image (tears)", "Light Echoes", "Exact rays" },
             () => (int)GameSettings.FastParts,
@@ -148,11 +178,16 @@ public partial class SettingsMenu : CanvasLayer
     private void BuildSimulationSection()
     {
         Section("Simulation");
-        Slider("Time scale", 0.05, 2, 0.05,
-            () => Engine.TimeScale,
-            v => Engine.TimeScale = v,
-            v => $"{v:0.00}x",
-            "Slows or speeds the whole simulation. Not saved between runs.");
+        Toggle("Paused (P)",
+            () => SimClock.Instance.Paused,
+            v => SimClock.Instance.SetPaused(v),
+            "Freezes ticks and physics. You can still fly around and watch the light settle.");
+        Buttons(("Step one tick (.)", SimClock.Instance.StepTick));
+        Slider("Time scale ([ and ])", Math.Log10(SimClock.MinTimeScale), Math.Log10(SimClock.MaxTimeScale), 0.01,
+            () => Math.Log10(SimClock.Instance.TimeScale),
+            v => SimClock.Instance.SetTimeScale((float)Math.Pow(10, v)),
+            v => $"{Math.Pow(10, v):0.00}x",
+            "Slows or speeds the whole simulation. The player keeps moving at normal speed. Not saved between runs.");
 
         Toggle("Spawn balls over time",
             () => Spawner()?.TimedSpawning ?? false,
@@ -168,11 +203,35 @@ public partial class SettingsMenu : CanvasLayer
             v => $"{v:0} s");
         Buttons(("Spawn 25 balls", () => Spawner()?.SpawnBurst(25)),
                 ("Remove spawned balls", () => Spawner()?.DespawnAll()));
+
+        SubSection("Throwing");
+        Choice("Object (B)", Demo.Thrower.ShapeNames.ToArray(),
+            () => Thrower()?.SelectedIndex ?? 0,
+            i => Thrower()?.Select(i),
+            "Left click throws the selected physics object along your view.");
+        Slider("Throw speed", 2, 30, 1,
+            () => Thrower()?.ThrowSpeed ?? 12,
+            v => { if (Thrower() is { } t) t.ThrowSpeed = (float)v; },
+            v => $"{v:0} m/s",
+            "Capped at 0.6 c so thrown objects stay below the speed of light.");
+        Buttons(("Remove thrown objects (X)", () => Thrower()?.Clear()));
     }
 
     private void BuildCameraSection()
     {
         Section("Camera");
+        Choice("Mode (V)", new[] { "Fly", "Drone", "Walk" },
+            () => (int)GameSettings.CameraMode,
+            i => { GameSettings.CameraMode = (CameraMode)i; GameSettings.Commit(); },
+            "Fly: free camera. Drone: FPV acro flight with a CRT video feed. Walk: gravity, jumping and collisions.");
+        Toggle("Invert drone pitch",
+            () => GameSettings.DroneInvertPitch,
+            v => { GameSettings.DroneInvertPitch = v; GameSettings.Commit(); },
+            "Off: mouse forward dives, like a flight stick. On: mouse forward climbs.");
+        Toggle("Drone CRT effect",
+            () => GameSettings.DroneCrt,
+            v => { GameSettings.DroneCrt = v; GameSettings.Commit(); },
+            "Scanlines, curvature, noise and an on-screen display while flying the drone.");
         Slider("Field of view", 40, 120, 1,
             () => GameSettings.Fov,
             v => { GameSettings.Fov = (float)v; GameSettings.Commit(); },
@@ -181,14 +240,42 @@ public partial class SettingsMenu : CanvasLayer
             () => GameSettings.MouseSensitivity,
             v => { GameSettings.MouseSensitivity = (float)v; GameSettings.Commit(); },
             v => $"{v * 1000:0.0}");
-        Slider("Fly speed", 1, 30, 0.5,
+        Slider("Move speed", 1, 30, 0.5,
             () => GameSettings.FlySpeed,
             v => { GameSettings.FlySpeed = (float)v; GameSettings.Commit(); },
-            v => $"{v:0.0} m/s");
+            v => $"{v:0.0} m/s",
+            "Fly and walk speed. The FPV drone is thrust-driven and ignores it.");
         Toggle("Keep camera below c",
             () => GameSettings.LimitToC,
             v => { GameSettings.LimitToC = v; GameSettings.Commit(); },
             "Cap the camera at 0.9c, like everything else. At low c you would barely move.");
+    }
+
+    private void BuildControlsSection()
+    {
+        Section("Controls");
+        foreach (var group in Keybinds.Groups)
+        {
+            SubSection(group.Title);
+            var grid = new GridContainer { Columns = 2, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            grid.AddThemeConstantOverride("h_separation", 12);
+            grid.AddThemeConstantOverride("v_separation", 5);
+            foreach (var bind in group.Binds)
+            {
+                var keys = new PanelContainer { CustomMinimumSize = new Vector2(190, 0), SizeFlagsVertical = Control.SizeFlags.ShrinkCenter };
+                keys.AddThemeStyleboxOverride("panel", UiTheme.Box(UiTheme.Control, 5, 8, 3, new Color(1, 1, 1, 0.12f)));
+                keys.AddChild(new Label { Text = bind.Keys, ClipText = true, HorizontalAlignment = HorizontalAlignment.Center });
+                grid.AddChild(keys);
+                grid.AddChild(new Label
+                {
+                    Text = bind.Action,
+                    SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                    AutowrapMode = TextServer.AutowrapMode.WordSmart,
+                    CustomMinimumSize = new Vector2(60, 0),
+                });
+            }
+            _box.AddChild(grid);
+        }
     }
 
     private void BuildDebugSection()
@@ -220,8 +307,9 @@ public partial class SettingsMenu : CanvasLayer
 
     private void BuildFooter()
     {
-        _box.AddChild(new HSeparator());
-        Buttons(("Reset everything", ResetAll), ("Close (Tab)", Toggle));
+        _outer.AddChild(new HSeparator());
+        _box = _outer;
+        Buttons(("Reset everything", ResetAll), ("Close (Tab)", () => Toggle()));
         RefreshAll();
     }
 
@@ -229,7 +317,8 @@ public partial class SettingsMenu : CanvasLayer
     {
         GameSettings.Reset();
         SimClock.Instance.SetStepIndex(SpeedLadder.Nearest(5f));
-        Engine.TimeScale = 1;
+        SimClock.Instance.SetPaused(false);
+        SimClock.Instance.SetTimeScale(1);
         DebugMode.Set(DebugLabelMode.Both);
         if (DebugView.Instance is { } d)
         {
@@ -287,9 +376,13 @@ public partial class SettingsMenu : CanvasLayer
                 : DisplayServer.WindowMode.Windowed);
     }
 
+    private Thrower? Thrower() => GetTree().GetFirstNodeInGroup("thrower") as Thrower;
+
     private Spawner? Spawner() => GetTree().GetFirstNodeInGroup("spawner") as Spawner;
 
     // ------------------------------------------------------------------ layout helpers
+
+    private const float PanelWidth = 480;
 
     private void BuildPanel()
     {
@@ -297,43 +390,64 @@ public partial class SettingsMenu : CanvasLayer
         root.SetAnchorsPreset(Control.LayoutPreset.FullRect);
         AddChild(root);
 
-        var panel = new PanelContainer();
+        // Fixed width: the offsets set it, and ClipContents plus clipped labels keep content from pushing it wider.
+        var panel = new PanelContainer { Theme = UiTheme.Create(), ClipContents = true };
         panel.SetAnchorsPreset(Control.LayoutPreset.LeftWide);
         panel.OffsetLeft = 12;
         panel.OffsetTop = 12;
-        panel.OffsetRight = 440;
+        panel.OffsetRight = 12 + PanelWidth;
         panel.OffsetBottom = -12;
-        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
-        {
-            BgColor = new Color(0.04f, 0.05f, 0.08f, 0.9f),
-            ContentMarginLeft = 14, ContentMarginRight = 14, ContentMarginTop = 10, ContentMarginBottom = 10,
-            CornerRadiusTopLeft = 6, CornerRadiusTopRight = 6, CornerRadiusBottomLeft = 6, CornerRadiusBottomRight = 6,
-        });
+        panel.GrowHorizontal = Control.GrowDirection.End;
+        panel.AddThemeStyleboxOverride("panel", UiTheme.Box(UiTheme.PanelColor, 10, 14, 12, new Color(1, 1, 1, 0.08f)));
         root.AddChild(panel);
         _panel = panel;
 
-        var outer = new VBoxContainer();
-        panel.AddChild(outer);
-        var title = new Label { Text = "Settings        Tab / Esc to close" };
-        title.AddThemeFontSizeOverride("font_size", 18);
-        outer.AddChild(title);
+        _outer = new VBoxContainer();
+        _outer.AddThemeConstantOverride("separation", 6);
+        panel.AddChild(_outer);
 
+        var header = new HBoxContainer();
+        var title = new Label { Text = "Settings" };
+        title.AddThemeFontSizeOverride("font_size", 20);
+        header.AddChild(title);
+        var hint = new Label
+        {
+            Text = "Tab / Esc to close",
+            HorizontalAlignment = HorizontalAlignment.Right,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            ClipText = true,
+        };
+        hint.AddThemeColorOverride("font_color", UiTheme.Dim);
+        header.AddChild(hint);
+        _outer.AddChild(header);
+
+        _tabs = new TabContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill, FocusMode = Control.FocusModeEnum.None };
+        _tabs.AddThemeFontSizeOverride("font_size", 13);
+        _outer.AddChild(_tabs);
+    }
+
+    /// <summary>Starts a new tab; later controls go into it.</summary>
+    private void Section(string text)
+    {
         var scroll = new ScrollContainer
         {
+            Name = text,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
         };
-        outer.AddChild(scroll);
+        _tabs.AddChild(scroll);
         _box = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _box.AddThemeConstantOverride("separation", 6);
         scroll.AddChild(_box);
+        _box.AddChild(new Control { CustomMinimumSize = new Vector2(0, 4) });
     }
 
-    private void Section(string text)
+    /// <summary>A heading inside the current tab.</summary>
+    private void SubSection(string text)
     {
         var label = new Label { Text = text.ToUpperInvariant() };
-        label.AddThemeFontSizeOverride("font_size", 13);
-        label.AddThemeColorOverride("font_color", new Color(1f, 0.65f, 0.3f));
+        label.AddThemeFontSizeOverride("font_size", 12);
+        label.AddThemeColorOverride("font_color", UiTheme.Accent);
         _box.AddChild(new Control { CustomMinimumSize = new Vector2(0, 6) });
         _box.AddChild(label);
         _box.AddChild(new HSeparator());
@@ -351,15 +465,16 @@ public partial class SettingsMenu : CanvasLayer
         Func<double> get, Action<double> set, Func<double, string> format, string? tip = null)
     {
         var row = new HBoxContainer { TooltipText = tip ?? "" };
-        var name = new Label { Text = text, CustomMinimumSize = new Vector2(150, 0) };
+        var name = new Label { Text = text, CustomMinimumSize = new Vector2(150, 0), ClipText = true };
         var slider = new HSlider
         {
             MinValue = min, MaxValue = max, Step = step,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(120, 0),
+            CustomMinimumSize = new Vector2(80, 0),
             FocusMode = Control.FocusModeEnum.None,
         };
-        var value = new Label { CustomMinimumSize = new Vector2(120, 0), HorizontalAlignment = HorizontalAlignment.Right };
+        // Fixed width, clipped: a long value (the speed of light) must never widen the menu.
+        var value = new Label { CustomMinimumSize = new Vector2(125, 0), ClipText = true, HorizontalAlignment = HorizontalAlignment.Right };
         row.AddChild(name);
         row.AddChild(slider);
         row.AddChild(value);
@@ -381,8 +496,15 @@ public partial class SettingsMenu : CanvasLayer
     private void Choice(string text, string[] items, Func<int> get, Action<int> set, string? tip = null)
     {
         var row = new HBoxContainer { TooltipText = tip ?? "" };
-        row.AddChild(new Label { Text = text, CustomMinimumSize = new Vector2(150, 0) });
-        var option = new OptionButton { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, FocusMode = Control.FocusModeEnum.None };
+        row.AddChild(new Label { Text = text, CustomMinimumSize = new Vector2(150, 0), ClipText = true });
+        var option = new OptionButton
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            FocusMode = Control.FocusModeEnum.None,
+            FitToLongestItem = false,
+            ClipText = true,
+            CustomMinimumSize = new Vector2(60, 0),
+        };
         foreach (var item in items)
             option.AddItem(item);
         option.ItemSelected += i => set((int)i);

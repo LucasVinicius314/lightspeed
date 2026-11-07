@@ -18,7 +18,10 @@
 | Windows and Linux builds (`build.ps1` / `build.sh`) | Done |
 | Multi-image rendering for parts at or above c ("Light Echoes") | Done (see notes) |
 | Exact per-pixel rendering for fast primitives ("Exact rays", the default) | Done (see notes) |
-| Settings menu (Tab) for every option | Done |
+| Settings menu (Tab) for every option, now tabbed with a fixed width and a Controls (keybinds) tab | Done |
+| Camera modes: Fly, Drone (momentum, banking, CRT feed with on-screen display), Walk (character controller) | Done |
+| Physics objects: throw balls, boxes and cylinders (left click) | Done |
+| Time control: pause, single-step, time scale that scales the whole clock | Done |
 | M5–M8, optional | Next: your call |
 
 ## Decisions
@@ -28,24 +31,30 @@
 - **Physics:** normal Godot physics, instantaneous. Nothing is delayed except the visuals.
 - **Speed of light:** `c` defaults to 5 m/s so the effect is obvious, and the player steps it live through a ladder of 31 values from 1 cm/s up to the real 299,792,458 m/s.
 - **No Doppler shift.**
-- **Camera:** free-fly in the present, FOV 85°, FXAA on. The camera is not clamped below `c` by default (at low `c` the player could barely move).
+- **Camera:** three modes in the present (V cycles them): Fly (free), Drone (FPV acro: attitude, thrust, gravity, drag, CRT feed) and Walk (a `CharacterBody3D` with gravity, jumping, collisions). FOV 85°, FXAA on. The camera is not clamped below `c` by default (at low `c` the player could barely move).
+- **Time control:** `SimClock` owns pause, step and time scale. A scale of `s` runs `60 s` ticks per real second and scales the engine delta by `s`, so each tick is still exactly 1/60 s (`Engine.TimeScale` alone would only slow the physics bodies and leave the clock and the light history at full rate). Pause is the tree pause: camera, UI and visuals have ProcessMode Always, tick-driven nodes check `GetTree().Paused`. While paused the visuals hold the sub-tick age captured at the pause.
 - **Deferred:** player's own body, lighting and shadows, aberration and Lorentz contraction. (Normals are already rotated in the shader.)
 
 ## Controls and saved settings
 
 | Input | Effect |
 |---|---|
-| Mouse wheel up / down | Step the speed of light faster / slower |
-| WASD, Q/E (or Ctrl/Space), Shift | Fly, down/up, sprint |
+| Mouse wheel up / down, Up / Down arrows | Step the speed of light faster / slower |
+| WASD, Space / C, Shift | Fly: move, up / down, sprint. Walk: move, Space jumps, sprint |
+| Drone (FPV) | W / S throttle up / down, instant (no key: a 20% base that holds height, like a Battlefield helicopter), A / D yaw, mouse Y pitch (forward dives; invertible), mouse X roll. Controller: left stick throttle (centre hovers) and yaw, right stick pitch and roll |
+| V | Cycle camera mode: Fly, Drone, Walk |
+| P, `.`, `[` and `]` | Pause / resume, step one tick while paused, slower / faster time |
+| Left click, B, X | Throw the selected physics object, next object (ball, box, cylinder), remove thrown objects |
+| H | Open the settings menu on the Controls tab, which lists every keybind (the table is `Keybinds.cs`) |
 | Mouse | Look (locked at start; Esc frees it, the next left click re-locks without stepping `c`) |
 | Tab | Open / close the settings menu (Esc also closes it). Opening it frees the mouse and stops the camera |
 | F1 | Toggle the shader solve and the CPU reference solve |
 | F3 | Cycle debug text: off, simple (profiler), full (profiler plus debug view). Saved to `user://debug_mode.cfg`; the first run starts in full |
 | 1 / 2 / 3 | In full mode: ghosts, delay rings, delay labels and lines. Saved to `user://debug_view.cfg` |
 
-**Settings menu** (Tab) sections: *Light* (speed of light, fast parts: One image / Light Echoes / Exact rays, max echoes per part, mesh edge length, CPU reference solve), *Simulation* (time scale, timed ball spawning, spawn interval, ball lifetime, spawn 25 balls, remove spawned balls), *Camera* (field of view, mouse sensitivity, fly speed, keep camera below c), *Debug* (debug text mode, ghosts, rings, labels), *Display* (FXAA, VSync, fullscreen), and *Reset everything*. Hover a control for a tooltip. Most settings are saved to `user://settings.cfg`; the debug toggles keep their own files; the speed of light and time scale are not saved. Scripted runs (`--screenshot`, `--no-settings`) ignore the saved file.
+**Settings menu** (Tab) has one tab per section, in a fixed-width panel (long values are clipped, never widen it): *Light* (speed of light, fast parts: One image / Light Echoes / Exact rays, max echoes per part, mesh edge length, CPU reference solve), *Simulation* (pause, step, time scale, timed ball spawning, spawn interval, ball lifetime, spawn 25 balls, remove spawned balls, and the thrown object, throw speed and remove thrown objects), *Camera* (mode, invert drone pitch, drone CRT effect, field of view, mouse sensitivity, move speed, keep camera below c), *Controls* (every keybind), *Debug* (debug text mode, ghosts, rings, labels), *Display* (FXAA, VSync, fullscreen), and *Reset everything*. Hover a control for a tooltip. Most settings are saved to `user://settings.cfg`; the debug toggles keep their own files; the speed of light, time scale, pause and camera mode are not saved. Scripted runs (`--screenshot`, `--no-settings`) ignore the saved file.
 
-**Command-line options** (after `--`): `--cpu`, `--c=<m/s>`, `--screenshot=<file.png>`, `--cam=x,y,z,yawDeg,pitchDeg`, `--at-tick=N`, `--stress=N`, `--start-tick=N`, `--max-edge=<m>`, `--no-echoes`, `--echoes`, `--rays`, `--open-menu`, `--no-settings`.
+**Command-line options** (after `--`): `--cpu`, `--c=<m/s>`, `--screenshot=<file.png>`, `--cam=x,y,z,yawDeg,pitchDeg`, `--at-tick=N`, `--stress=N`, `--start-tick=N`, `--max-edge=<m>`, `--no-echoes`, `--echoes`, `--rays`, `--open-menu`, `--menu-tab=<name>`, `--no-settings`, `--mode=fly|drone|walk`, `--throw=N` (throw N objects at start), `--pause-at-tick=N` (freeze the clock at tick N).
 
 ## Architecture
 
@@ -62,10 +71,10 @@
 | `delayed_visual.gdshader` | `shaders/` | `vertex()` finds each vertex's retarded transform: binary search when the part is slower than c, `find_image` (speed-bounded backward scan) when it is not. Vertices with no such image are discarded in the fragment stage. |
 | `DelayedVisual`, `MeshTessellation`, `TessellationMath` | `src/Visuals` | The visible proxy mesh. Top-level, uses the shader, large `CustomAabb`. Tessellates a copy of primitive meshes so no edge exceeds `MaxEdgeLength` (default 0.2 m) and edges can warp. Draws fast parts (at or above c) in the chosen mode: Light Echoes (extra mesh draws, up to `MaxImages`) or Exact rays (a full-screen quad shaded per pixel). |
 | `SpeedLimiter` | `src/Physics` | Keeps a RigidBody3D's fastest point below c (linear speed plus spin at its bounding radius). |
-| `FreeCamera` | `src/Player` | Fly camera. Lives in the present. Stops while the menu is open. |
+| `FreeCamera` | `src/Player` | The player, in the present, with three modes: Fly, Drone (full 3D attitude, body rates from the sticks, thrust along its up axis at 5x weight, gravity, linear and quadratic drag, camera tilted up 25 degrees, floor at 0.15 m, no self-levelling) and Walk (`CharacterBody3D`, capsule, gravity, jump, pushes rigid bodies, camera interpolated between ticks). Uses wall-clock frame time, so it keeps moving when time is slowed or paused (Walk is tick-driven and stops with the world). Stops while the menu is open. |
 | `GameSettings` | `src/Core` | Static, persisted settings (Light Echoes, max echoes, mesh edge length, CPU solve, FOV, mouse sensitivity, fly speed, camera limit, FXAA, VSync, fullscreen) with a `Changed` event. Consumers (`DelayedVisual`, `SettingsMenu`) react to it. |
 | `SettingsMenu` | `src/Ui` | The Tab menu. Every control reads and writes the same state the hotkeys use and refreshes while open; also owns the F1 key. |
-| `LightSpeedHud` | `src/Ui` | Bottom centre: c, its fraction of the real c, visible range, progress bar over the ladder, key hints and the current F3 mode. |
+| `LightSpeedHud` | `src/Ui` | Bottom centre: c, its fraction of the real c, visible range, progress bar over the ladder, key hints and the current F3 mode, plus a top chip with the camera mode, pause / time scale and the selected throwable. Up / Down arrows also step c. |
 | `DebugMode` | `src/Debug` | Static F3 state (`None`, `Simple`, `Both`), persisted, with a `Changed` event. |
 | `ProfilerOverlay` | `src/Debug` | Top-left readout in simple and full modes: fps, CPU and GPU frame time, VRAM, RAM. |
 | `DebugView`, `LightRings` | `src/Debug` | Full mode only: true-position ghosts, delay rings around the camera, per-object delay labels and ghost-to-visual lines, plus a top-right panel (c, history fill, history update cost, per-object delay and distance). `LightRings` (engine-free) plans the ring delays. |
@@ -73,6 +82,9 @@
 | `Orbiter`, `Oscillator` | `src/Demo` | Deterministic kinematic test motions. |
 | `CircleMover`, `Spinner` | `src/Demo` | Circular driving/flying path and a local-axis spinner. They build the car (spinning wheels), helicopter (main and tail rotors) and standing fan scenes. |
 | `Spawner`, `Teleporter` | `src/Demo` | Spawn/despawn and teleport demos; `Spawner` also drives `--stress=N`. |
+| `Thrower` | `src/Demo` | Left click throws the selected rigid body (ball, box, cylinder scenes) along the view, capped at 0.6 c; despawns through `LightHistory`, oldest first past 60. |
+| `DroneView`, `crt.gdshader` | `src/Ui`, `shaders/` | Drone mode only: horizon, crosshair, altitude, speed, flight time, REC drawn on layer 91 under a full-screen CRT shader on layer 95 (curvature, scanlines, phosphor mask, aberration, noise, interference band, vignette). The HUD sits under it too; the menu is above. |
+| `Keybinds`, `UiTheme` | `src/Ui` | The table of every binding (drives the Controls tab) and the shared dark-glass theme. |
 
 The physics body and the visual are separate, so the real simulation never knows the visuals are delayed.
 

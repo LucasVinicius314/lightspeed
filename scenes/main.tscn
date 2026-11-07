@@ -14,6 +14,11 @@
 [ext_resource type="PackedScene" path="res://scenes/objects/helicopter.tscn" id="13"]
 [ext_resource type="PackedScene" path="res://scenes/objects/standing_fan.tscn" id="14"]
 [ext_resource type="PackedScene" path="res://scenes/objects/teleporting_cube.tscn" id="11"]
+[ext_resource type="Script" path="res://src/Demo/Thrower.cs" id="16"]
+[ext_resource type="PackedScene" path="res://scenes/objects/physics_box.tscn" id="17"]
+[ext_resource type="PackedScene" path="res://scenes/objects/physics_cylinder.tscn" id="18"]
+[ext_resource type="Script" path="res://src/Ui/DroneView.cs" id="19"]
+[ext_resource type="Material" path="res://assets/materials/bricks075a/bricks.tres" id="20"]
 
 [sub_resource type="Environment" id="2"]
 background_mode = 1
@@ -23,9 +28,6 @@ ambient_light_color = Color(0.5, 0.5, 0.55, 1)
 
 [sub_resource type="BoxMesh" id="1"]
 size = Vector3(50, 0.2, 50)
-
-[sub_resource type="StandardMaterial3D" id="GroundMat_1"]
-albedo_color = Color(0.22, 0.24, 0.28, 1)
 
 [sub_resource type="BoxShape3D" id="GroundShape_1"]
 size = Vector3(50, 0.2, 50)
@@ -43,7 +45,7 @@ transform = Transform3D(1, 0, 0, 0, 0.7071, 0.7071, 0, -0.7071, 0.7071, 0, 10, 0
 
 [node name="Mesh" type="MeshInstance3D" parent="Ground" unique_id=614190060]
 mesh = SubResource("1")
-surface_material_override/0 = SubResource("GroundMat_1")
+surface_material_override/0 = ExtResource("20")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=728786057]
 shape = SubResource("GroundShape_1")
@@ -87,14 +89,26 @@ rotation = Vector3(0, -1.5708, 0)
 script = ExtResource("10")
 Scene = ExtResource("7")
 
+[node name="Thrower" type="Node3D" parent="."]
+script = ExtResource("16")
+Scenes = Array[PackedScene]([ExtResource("7"), ExtResource("17"), ExtResource("18")])
+
 [node name="ProfilerOverlay" type="CanvasLayer" parent="." unique_id=703451621]
+process_mode = 3
 script = ExtResource("4")
 
 [node name="DebugView" type="Node3D" parent="." unique_id=1151367079]
+process_mode = 3
 script = ExtResource("9")
 
 [node name="LightSpeedHud" type="CanvasLayer" parent="." unique_id=698251943]
+process_mode = 3
 script = ExtResource("8")
 
+[node name="DroneView" type="CanvasLayer" parent="."]
+process_mode = 3
+script = ExtResource("19")
+
 [node name="SettingsMenu" type="CanvasLayer" parent="."]
+process_mode = 3
 script = ExtResource("15")
