@@ -80,6 +80,10 @@ The repository must be public for anonymous downloads. Each file must stay under
   *Project > Export* if you want an icon, a version, or another architecture.
 - `build\` is git-ignored. The Windows zip is plain; the Linux tarball also holds the contents directly (no wrapping folder) but Windows cannot store the
   executable bit, hence the `chmod +x`.
+- Each build folder also gets `version.txt` (the tag in CI via `GITHUB_REF_NAME`, otherwise `git describe`) and the
+  updater from `scripts/update/` (`Update.bat` + `update.ps1` on Windows, `update.sh` on Linux), which downloads the
+  latest release into the folder. It is test-run against the published release; keep its asset names in step with
+  the packaging above.
 - The scripts turn off the .NET compiler servers. Left on, they keep Godot's output pipe open for about ten
   minutes after each export and every build appears to hang.
 - Tested here: Windows and Linux builds both run (`--headless --quit-after` prints the sim ticks; the Linux one under

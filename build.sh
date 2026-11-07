@@ -94,6 +94,19 @@ for t in "${targets[@]}"; do
   [[ -f "$dest" ]] || { echo "Export of '${preset[$t]}' failed." >&2; exit 1; }
 done
 
+# Each build folder carries its version and the updater, so an unpacked game can update itself.
+version_tag="${GITHUB_REF_NAME:-$(git describe --tags --always 2>/dev/null || echo dev)}"
+for t in "${targets[@]}"; do
+  folder="$(dirname "${out[$t]}")"
+  echo "$version_tag" > "$folder/version.txt"
+  if [[ "$t" == windows ]]; then
+    cp scripts/update/Update.bat scripts/update/update.ps1 "$folder/"
+  else
+    cp scripts/update/update.sh "$folder/"
+    chmod +x "$folder/update.sh"
+  fi
+done
+
 if (( package )); then
   for t in "${targets[@]}"; do
     if [[ "$t" == windows ]]; then

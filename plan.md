@@ -39,11 +39,11 @@
 
 | Input | Effect |
 |---|---|
-| Mouse wheel up / down, Up / Down arrows | Step the speed of light faster / slower |
+| Mouse wheel up / down, Up / Down arrows, D-pad up / down | Step the speed of light faster / slower |
 | WASD, Space / C, Shift | Fly: move, up / down, sprint. Walk: move, Space jumps, sprint |
 | Drone (FPV) | W / S throttle up / down, instant (no key: a 20% base that holds height, like a Battlefield helicopter), A / D yaw, mouse Y pitch (forward dives; invertible), mouse X roll. Controller: left stick throttle (centre hovers) and yaw, right stick pitch and roll |
 | V | Cycle camera mode: Fly, Drone, Walk |
-| P, `.`, `[` and `]` | Pause / resume, step one tick while paused, slower / faster time |
+| P, `.`, `[` and `]`, D-pad left / right | Pause / resume, step one tick while paused, slower / faster time (the D-pad only changes the time scale) |
 | Left click, B, X | Throw the selected physics object, next object (ball, box, cylinder), remove thrown objects |
 | H | Open the settings menu on the Controls tab, which lists every keybind (the table is `Keybinds.cs`) |
 | Mouse | Look (locked at start; Esc frees it, the next left click re-locks without stepping `c`) |

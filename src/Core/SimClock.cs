@@ -101,6 +101,17 @@ public partial class SimClock : Node
         Freeze();
     }
 
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        // Controller: D-pad left / right slow down / speed up time (up / down step c, see the HUD).
+        if (@event is not InputEventJoypadButton { Pressed: true } pad)
+            return;
+        if (pad.ButtonIndex == JoyButton.DpadLeft)
+            SetTimeScale(TimeScale / 1.25f);
+        else if (pad.ButtonIndex == JoyButton.DpadRight)
+            SetTimeScale(TimeScale * 1.25f);
+    }
+
     public override void _UnhandledKeyInput(InputEvent @event)
     {
         if (@event is not InputEventKey { Pressed: true } key)

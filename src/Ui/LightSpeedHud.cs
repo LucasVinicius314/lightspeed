@@ -118,10 +118,12 @@ public partial class LightSpeedHud : CanvasLayer
         {
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp }:
             case InputEventKey { Pressed: true, Echo: false, Keycode: Key.Up }:
+            case InputEventJoypadButton { Pressed: true, ButtonIndex: JoyButton.DpadUp }:
                 SimClock.Instance.StepFaster();
                 break;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelDown }:
             case InputEventKey { Pressed: true, Echo: false, Keycode: Key.Down }:
+            case InputEventJoypadButton { Pressed: true, ButtonIndex: JoyButton.DpadDown }:
                 SimClock.Instance.StepSlower();
                 break;
         }

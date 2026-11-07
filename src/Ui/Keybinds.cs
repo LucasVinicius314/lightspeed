@@ -16,6 +16,7 @@ public static class Keybinds
         {
             new("Scroll up  /  Up", "Faster light"),
             new("Scroll down  /  Down", "Slower light"),
+            new("D-pad up  /  down", "Faster / slower light (controller)"),
             new("F1", "Toggle the CPU reference solve"),
         }),
         new("Moving (all modes)", new Bind[]
@@ -53,6 +54,7 @@ public static class Keybinds
             new("P", "Pause / resume"),
             new(".", "Step one tick (while paused)"),
             new("[  and  ]", "Slow down / speed up time"),
+            new("D-pad left  /  right", "Slow down / speed up time (controller)"),
         }),
         new("Physics objects", new Bind[]
         {

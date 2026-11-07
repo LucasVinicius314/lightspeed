@@ -25,6 +25,13 @@ $ProgressPreference='SilentlyContinue'; Invoke-WebRequest https://github.com/Luc
 curl -fL https://github.com/LucasVinicius314/lightspeed/releases/latest/download/Lightspeed-linux.tar.gz -o Lightspeed-linux.tar.gz && mkdir -p Lightspeed && tar -xzf Lightspeed-linux.tar.gz -C Lightspeed && chmod +x Lightspeed/Lightspeed.x86_64 && ./Lightspeed/Lightspeed.x86_64
 ```
 
+## Update
+
+Inside the game folder, double-click **Update.bat** (Windows) or run `bash update.sh` (Linux). It looks up the
+latest release, and if it is newer than the `version.txt` in the folder it downloads it and replaces the game files.
+Close the game first. Your settings and saves live outside the folder and are kept. Releases from `v0.0.2` on include
+the updater; for older ones, run the download command above again.
+
 Press **Tab** in the game for the settings menu, scroll the mouse wheel to change the speed of light, and **Esc** to
 free the mouse.
 

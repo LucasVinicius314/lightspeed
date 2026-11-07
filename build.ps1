@@ -105,6 +105,17 @@ foreach ($t in $targets) {
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $out)) { throw "Export of '$($preset.Name)' failed (exit code $LASTEXITCODE)." }
 }
 
+# Each build folder carries its version and the updater, so an unpacked game can update itself.
+$versionTag = $env:GITHUB_REF_NAME
+if (-not $versionTag) { try { $versionTag = (git describe --tags --always 2>$null) } catch { } }
+if (-not $versionTag) { $versionTag = 'dev' }
+foreach ($t in $targets) {
+    $folder = Split-Path $presets[$t].Out
+    Set-Content (Join-Path $folder 'version.txt') $versionTag -Encoding ascii
+    if ($t -eq 'windows') { Copy-Item scripts\update\Update.bat, scripts\update\update.ps1 $folder -Force }
+    else { Copy-Item scripts\update\update.sh $folder -Force }
+}
+
 if ($Package) {
     foreach ($t in $targets) {
         if ($t -eq 'windows') {
