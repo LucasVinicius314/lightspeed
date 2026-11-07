@@ -26,17 +26,29 @@ public partial class HistoryTexture : Node
     /// <summary>Ticks are stored modulo this. Must match TICK_WRAP in the shader.</summary>
     public const int TickWrap = 1 << 20;
 
-    private const int MinCapacity = 600;
+    private const int MinCapacity = 300;
     private const int MaxCapacity = 8192; // the shader's binary search covers 2^14 samples
 
     /// <summary>
-    /// Samples kept per object, derived at startup from <see cref="MaxViewDistance"/> divided by the starting
-    /// speed of light, so light from the farthest viewable object is still in the buffer. Lowering c later
-    /// shrinks the visible range (shown on the HUD) rather than resizing the buffer.
+    /// Samples kept per object: <see cref="GameSettings.HistorySeconds"/> at the tick rate, in whole chunks.
+    /// Light from farther than c times this is gone, so lowering c later shrinks the visible range (shown on
+    /// the HUD). Changing the setting resizes the buffer in place, keeping the newest samples.
     /// </summary>
     public static int Capacity { get; private set; } = MinCapacity;
 
-    [Export] public float MaxViewDistance { get; set; } = 100f;
+    /// <summary>Raised after the buffer was resized, so the HUD can refresh its numbers.</summary>
+    public static event Action? Resized;
+
+    /// <summary>Samples for a history of <paramref name="seconds"/>, rounded up to whole chunks and clamped.</summary>
+    public static int CapacityFor(double seconds)
+    {
+        int samples = (int)Math.Ceiling(seconds / SimClock.TickDelta);
+        return (Math.Clamp(samples, MinCapacity, MaxCapacity) + Chunk - 1) / Chunk * Chunk;
+    }
+
+    /// <summary>Rough memory for a history of <paramref name="seconds"/>: the texture plus its CPU copy.</summary>
+    public static double EstimateMegabytes(double seconds) =>
+        CapacityFor(seconds) / Chunk * (Chunk * 2.0 * MaxObjects * 4 * sizeof(float)) * 2 / 1e6;
 
     public static HistoryTexture Instance { get; private set; } = null!;
 
@@ -71,9 +83,8 @@ public partial class HistoryTexture : Node
         ProcessPhysicsPriority = 2000;
         ProcessMode = ProcessModeEnum.Always; // _Process keeps the shader age current; the tick itself skips while paused
 
-        double seconds = MaxViewDistance / SimClock.Instance.C;
-        int samples = (int)Math.Ceiling(seconds / SimClock.TickDelta);
-        Capacity = (Math.Clamp(samples, MinCapacity, MaxCapacity) + Chunk - 1) / Chunk * Chunk;
+        Capacity = CapacityFor(GameSettings.HistorySeconds);
+        GameSettings.Changed += OnSettingsChanged;
 
         int layers = Capacity / Chunk;
         int floatsPerLayer = Chunk * 2 * MaxObjects * 4;
@@ -100,8 +111,88 @@ public partial class HistoryTexture : Node
         RenderingServer.GlobalShaderParameterAdd("lc_c", RenderingServer.GlobalShaderParameterType.Float, SimClock.Instance.C);
     }
 
-    public override void _Process(double delta) =>
+    public override void _ExitTree() => GameSettings.Changed -= OnSettingsChanged;
+
+    private double _resizeAtMsec = -1;
+
+    private void OnSettingsChanged()
+    {
+        // Dragging the slider fires this many times; resize once it settles.
+        _resizeAtMsec = CapacityFor(GameSettings.HistorySeconds) != Capacity ? Time.GetTicksMsec() + 400 : -1;
+    }
+
+    public override void _Process(double delta)
+    {
         RenderingServer.GlobalShaderParameterSet("lc_age", (float)FractionalAge);
+        if (_resizeAtMsec >= 0 && Time.GetTicksMsec() >= _resizeAtMsec)
+        {
+            _resizeAtMsec = -1;
+            Resize(CapacityFor(GameSettings.HistorySeconds));
+        }
+    }
+
+    /// <summary>
+    /// Re-packs the buffer for a new capacity without losing the recent past: every sample is moved by its age
+    /// (how many ticks before now), then each object's own ring is resized to match. Runs between ticks.
+    /// </summary>
+    private void Resize(int newCapacity)
+    {
+        if (newCapacity == Capacity)
+            return;
+
+        int oldCapacity = Capacity;
+        int keep = Math.Min(_count, newCapacity);
+        int rows = Math.Max(_nextRow, 1);
+        int layers = newCapacity / Chunk;
+        int floatsPerLayer = Chunk * 2 * MaxObjects * 4;
+
+        var data = new float[layers][];
+        for (int i = 0; i < layers; i++)
+            data[i] = new float[floatsPerLayer];
+
+        for (int age = 0; age < keep; age++)
+        {
+            int oldSlot = ((_head - age) % oldCapacity + oldCapacity) % oldCapacity;
+            int newSlot = keep - 1 - age;
+            var from = _layerData[oldSlot / Chunk];
+            var to = data[newSlot / Chunk];
+            int fromOffset = oldSlot % Chunk * 2 * 4; // two texels of four floats per sample
+            int toOffset = newSlot % Chunk * 2 * 4;
+            for (int row = 0; row < rows; row++)
+            {
+                int rowStart = row * Chunk * 2 * 4;
+                Array.Copy(from, rowStart + fromOffset, to, rowStart + toOffset, 8);
+            }
+        }
+
+        _layerData = data;
+        Capacity = newCapacity;
+        _head = keep - 1;
+        _count = keep;
+        foreach (var track in _tracks)
+            track.Resize(newCapacity);
+
+        var images = new Godot.Collections.Array<Image>();
+        for (int i = 0; i < layers; i++)
+        {
+            Buffer.BlockCopy(data[i], 0, _scratch, 0, _scratch.Length);
+            images.Add(Image.CreateFromData(Chunk * 2, MaxObjects, false, Image.Format.Rgbaf, _scratch));
+        }
+        var previous = _history;
+        _history = new Texture2DArray();
+        _history.CreateFromImages(images);
+        RenderingServer.GlobalShaderParameterSet("lc_history", _history);
+        RenderingServer.GlobalShaderParameterSet("lc_head", _head);
+        RenderingServer.GlobalShaderParameterSet("lc_count", _count);
+
+        // Release the old texture and the temporary images now rather than whenever the GC gets to them: they
+        // are hundreds of megabytes at long histories.
+        previous.Dispose();
+        foreach (var image in images)
+            image.Dispose();
+        GC.Collect();
+        Resized?.Invoke();
+    }
 
     /// <summary>Allocates a history row. Returns null (and logs an error) when all rows are in use.</summary>
     public HistoryTrack? CreateTrack()

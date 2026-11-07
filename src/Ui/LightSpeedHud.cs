@@ -74,8 +74,11 @@ public partial class LightSpeedHud : CanvasLayer
         _status = MakeLabel(chip, 14);
 
         SimClock.Instance.CChanged += _ => Refresh();
+        HistoryTexture.Resized += Refresh;
         Refresh();
     }
+
+    public override void _ExitTree() => HistoryTexture.Resized -= Refresh;
 
     private void RefreshKeys() =>
         _keys.Text = $"Scroll / Up / Down  light speed     V  mode     P  pause     Tab  settings     H  keys     F3  debug: {DebugMode.Describe(DebugMode.Current)}";

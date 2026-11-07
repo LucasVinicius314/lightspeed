@@ -9,10 +9,14 @@ main() {
   local repo="LucasVinicius314/lightspeed" asset="Lightspeed-linux.tar.gz"
   local dir; dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-  if pgrep -f "$dir/Lightspeed.x86_64" >/dev/null 2>&1; then
-    echo "Lightspeed is running. Close the game and run the update again." >&2
-    return 1
-  fi
+  # Compare each process executable with the game binary (a command line may be relative, so match on /proc).
+  local exe
+  for exe in /proc/[0-9]*/exe; do
+    if [[ "$(readlink -f "$exe" 2>/dev/null)" == "$dir/Lightspeed.x86_64" ]]; then
+      echo "Lightspeed is running. Close the game and run the update again." >&2
+      return 1
+    fi
+  done
 
   echo "Checking for the latest release ..."
   local latest
@@ -39,7 +43,15 @@ main() {
 
   # The data folder holds the game's assemblies; drop the old one so nothing stale is left behind.
   rm -rf "$dir"/data_*
-  (cd "$tmp/new" && find . -mindepth 1 -maxdepth 1 ! -name update.sh -exec cp -a {} "$dir"/ \;)
+  # Remove each item before copying its replacement, so a file in use cannot make the copy fail halfway.
+  local item name
+  for item in "$tmp"/new/* "$tmp"/new/.[!.]*; do
+    [[ -e "$item" ]] || continue
+    name="$(basename "$item")"
+    [[ "$name" == update.sh ]] && continue
+    rm -rf "${dir:?}/$name"
+    cp -a "$item" "$dir/$name"
+  done
   chmod +x "$dir/Lightspeed.x86_64"
   if [[ -f "$tmp/new/update.sh" ]]; then
     # Replace this script by renaming, so the copy that is running keeps its own file.

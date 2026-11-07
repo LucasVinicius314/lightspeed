@@ -41,7 +41,7 @@
 |---|---|
 | Mouse wheel up / down, Up / Down arrows, D-pad up / down | Step the speed of light faster / slower |
 | WASD, Space / C, Shift | Fly: move, up / down, sprint. Walk: move, Space jumps, sprint |
-| Drone (FPV) | W / S throttle up / down, instant (no key: a 20% base that holds height, like a Battlefield helicopter), A / D yaw, mouse Y pitch (forward dives; invertible), mouse X roll. Controller: left stick throttle (centre hovers) and yaw, right stick pitch and roll |
+| Drone (FPV) | W / S throttle up / down, instant (no key: zero throttle, like a Battlefield helicopter), A / D yaw, mouse Y pitch (forward dives; invertible), mouse X roll. Controller: left stick up throttle (released is zero, linear, about a fifth holds height) and left stick X yaw, right stick pitch and roll |
 | V | Cycle camera mode: Fly, Drone, Walk |
 | P, `.`, `[` and `]`, D-pad left / right | Pause / resume, step one tick while paused, slower / faster time (the D-pad only changes the time scale) |
 | Left click, B, X | Throw the selected physics object, next object (ball, box, cylinder), remove thrown objects |
@@ -110,7 +110,7 @@ The physics body and the visual are separate, so the real simulation never knows
 - Despawned object whose last light has passed: hidden. Until then it stays visible.
 - Teleport: if the crossing lands on a history break, hidden (the gap between old and new place).
 - Image k of a vertex that does not exist: the vertex is parked at the newest pose and its triangles are discarded.
-- History length: `MaxViewDistance / c` seconds at startup (100 m at 5 m/s is 20 s, 1200 samples; minimum 600, maximum 8192).
+- History length: the player's setting (`GameSettings.HistorySeconds`, 5 to 120 s, default 30 s; 300 to 8192 samples), changeable live. The texture and every object's ring are re-packed by sample age, so the recent past survives a resize. About 2 MB per second of history (video plus system memory).
 
 ## Milestones
 
@@ -153,7 +153,7 @@ Mouse wheel steps `c` through `SpeedLadder` (1 cm/s … 1 m/s … speed of sound
 - **Spawn:** an object is invisible until the light from its first sample reaches the camera.
 - **Despawn:** `LightHistory.Despawn()` stops recording and hands the visual to the scene root. It stays visible until the light from the object's last moment has passed, then frees itself, and its row is reused once the last sample leaves the history window.
 - **Teleport:** `LightHistory.BreakNext()` marks a history break. You see the old place until its last light has passed, then nothing (the gap), then the new place when its first light arrives. Two simultaneous images are not modelled.
-- **History length derived from view distance** (see above). Lowering c later shrinks the visible range; the HUD shows it.
+- **History length is a setting** (see above). Lowering c shrinks the visible range (c times the history); the HUD shows it.
 - **Partial upload:** a tick uploads one 16-slot layer instead of the whole texture. The metadata texture is rewritten only on spawn, despawn and expiry.
 - **Precision:** sample time is implicit and ticks are stored modulo 2^20, so the GPU never holds a growing float time. Demo motion phases are reduced in double. `-- --start-tick=N` starts the clock later to test this.
 - **Stress scene:** `-- --stress=N` drops N rigid balls at once. A default `Spawner` in the main scene spawns and despawns balls over time, and a `Teleporter` hops between four places.

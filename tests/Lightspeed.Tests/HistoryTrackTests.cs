@@ -119,4 +119,43 @@ public class HistoryTrackTests
         Assert.Equal(SolveStatus.Ok, late.Status);
         Assert.Equal(30f, late.Position.X, 1e-3);
     }
+
+    [Fact]
+    public void Growing_the_ring_keeps_every_sample_and_lets_it_fill_further()
+    {
+        var track = new HistoryTrack(capacity: 4, row: 0);
+        for (int t = 0; t < 6; t++)
+            track.Record(t, At(t)); // holds 2..5
+
+        track.Resize(8);
+
+        Assert.Equal(8, track.Capacity);
+        Assert.Equal(4, track.Count);
+        Assert.Equal(2f, track[0].Position.X);
+        Assert.Equal(5f, track.Newest.Position.X);
+
+        for (int t = 6; t < 12; t++)
+            track.Record(t, At(t));
+        Assert.Equal(8, track.Count);
+        Assert.Equal(4f, track[0].Position.X);
+        Assert.Equal(11f, track.Newest.Position.X);
+    }
+
+    [Fact]
+    public void Shrinking_the_ring_keeps_the_newest_samples()
+    {
+        var track = new HistoryTrack(capacity: 8, row: 0);
+        for (int t = 0; t < 8; t++)
+            track.Record(t, At(t), isBreak: t == 6);
+
+        track.Resize(3);
+
+        Assert.Equal(3, track.Count);
+        Assert.Equal(5f, track[0].Position.X);
+        Assert.Equal(7f, track.Newest.Position.X);
+        Assert.True(track.BreaksBefore(1)); // the teleport at tick 6 survives
+        track.Record(8, At(8));
+        Assert.Equal(6f, track[0].Position.X);
+        Assert.Equal(8f, track.Newest.Position.X);
+    }
 }

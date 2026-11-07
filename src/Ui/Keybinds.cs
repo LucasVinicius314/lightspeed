@@ -37,14 +37,14 @@ public static class Keybinds
         }),
         new("Drone (FPV, keyboard and mouse)", new Bind[]
         {
-            new("W  /  S", "Throttle up / down, instant; with neither held it sits at 20%, which holds height"),
+            new("W  /  S", "Throttle up / down, instant; with neither held it is zero"),
             new("A  /  D", "Yaw left / right"),
             new("Mouse Y", "Pitch (forward dives; invertible in settings)"),
             new("Mouse X", "Roll"),
         }),
         new("Drone (controller)", new Bind[]
         {
-            new("Left stick Y", "Throttle (centre hovers)"),
+            new("Left stick Y", "Throttle (released is zero; about a fifth holds height)"),
             new("Left stick X", "Yaw"),
             new("Right stick Y", "Pitch (forward dives)"),
             new("Right stick X", "Roll"),

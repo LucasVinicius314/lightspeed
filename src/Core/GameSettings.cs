@@ -40,6 +40,7 @@ public static class GameSettings
     public const float DefaultFlySpeed = 4f;
     public const float DefaultMaxEdgeLength = 0.2f;
     public const int DefaultMaxImages = 8;
+    public const float DefaultHistorySeconds = 30f;
 
     private const string Path = "user://settings.cfg";
     private static readonly bool Persist;
@@ -55,6 +56,12 @@ public static class GameSettings
 
     /// <summary>Longest mesh edge in metres. Shorter lets shapes warp more smoothly but costs vertices.</summary>
     public static float MaxEdgeLength { get; set; }
+
+    /// <summary>
+    /// How many seconds of motion every object remembers. Light older than this is gone, so it caps how far away
+    /// you can see an object (c times this). Longer costs memory; the history texture resizes to match.
+    /// </summary>
+    public static float HistorySeconds { get; set; }
 
     /// <summary>Use the CPU reference solve (one image, object centre) instead of the shader.</summary>
     public static bool CpuSolver { get; set; }
@@ -98,6 +105,8 @@ public static class GameSettings
                 FastParts = FastPartRendering.Rays;
             else if (arg.StartsWith("--mode=") && Enum.TryParse<CameraMode>(arg["--mode=".Length..], true, out var mode))
                 CameraMode = mode;
+            else if (arg.StartsWith("--history="))
+                HistorySeconds = float.Parse(arg["--history=".Length..], CultureInfo.InvariantCulture);
             else if (arg.StartsWith("--max-edge="))
                 MaxEdgeLength = float.Parse(arg["--max-edge=".Length..], CultureInfo.InvariantCulture);
         }
@@ -122,6 +131,7 @@ public static class GameSettings
         FastParts = FastPartRendering.Rays;
         MaxImages = DefaultMaxImages;
         MaxEdgeLength = DefaultMaxEdgeLength;
+        HistorySeconds = DefaultHistorySeconds;
         CpuSolver = false;
         Fov = DefaultFov;
         MouseSensitivity = DefaultMouseSensitivity;
@@ -143,6 +153,7 @@ public static class GameSettings
         FastParts = (FastPartRendering)(int)config.GetValue("light", "fast_parts", (int)FastParts);
         MaxImages = (int)config.GetValue("light", "max_images", MaxImages);
         MaxEdgeLength = (float)(double)config.GetValue("light", "max_edge", MaxEdgeLength);
+        HistorySeconds = (float)(double)config.GetValue("light", "history_seconds", (double)HistorySeconds);
         CpuSolver = (bool)config.GetValue("light", "cpu_solver", CpuSolver);
         Fov = (float)(double)config.GetValue("camera", "fov", Fov);
         MouseSensitivity = (float)(double)config.GetValue("camera", "sensitivity", MouseSensitivity);
@@ -161,6 +172,7 @@ public static class GameSettings
         config.SetValue("light", "fast_parts", (int)FastParts);
         config.SetValue("light", "max_images", MaxImages);
         config.SetValue("light", "max_edge", (double)MaxEdgeLength);
+        config.SetValue("light", "history_seconds", (double)HistorySeconds);
         config.SetValue("light", "cpu_solver", CpuSolver);
         config.SetValue("camera", "fov", (double)Fov);
         config.SetValue("camera", "sensitivity", (double)MouseSensitivity);

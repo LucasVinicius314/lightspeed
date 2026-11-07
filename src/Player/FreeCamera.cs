@@ -9,7 +9,7 @@ namespace Lightspeed.Player;
 /// Fly (WASD, Space up, C down, instant), Drone (an FPV quadcopter in acro mode, shown through a CRT video
 /// feed) and Walk (a CharacterBody3D with gravity, jumping and collisions).
 /// The drone has a full 3D attitude, thrust along its own up axis, gravity and drag. W/S raise and lower the
-/// throttle (instant: W climbs, S drops, no key holds the 20% base that keeps its height, like a Battlefield helicopter), A/D yaw, mouse Y pitches and mouse X rolls; on a
+/// throttle (instant: W climbs, S drops, with no key held it is zero, like a Battlefield helicopter), A/D yaw, mouse Y pitches and mouse X rolls; on a
 /// gamepad the left stick is throttle and yaw and the right stick pitch and roll. Stick input commands a
 /// rotation rate, and nothing levels the drone for you.
 /// The mouse is locked at start; Esc unlocks it and the next click locks it again. The player lives in the
@@ -35,11 +35,14 @@ public partial class FreeCamera : Camera3D
     // FPV drone. Thrust is a multiple of gravity, so hover sits at 1 / ThrustToWeight of full throttle.
     private const float ThrustToWeight = 5f;
     private const float KeyThrottleUp = 0.55f;    // keyboard throttle while W is held (instant)
-    private const float KeyThrottleDown = 0.0f;   // while S is held; with neither it is HoverThrottle (20%)
+    private const float KeyThrottleDown = 0.0f;   // while S is held; with neither the throttle is zero
     private const float DroneDrag = 0.12f;        // linear, 1/s
     private const float DroneDragQuadratic = 0.010f; // per metre
     private const float CameraTilt = 0.436f;      // FPV cameras are tilted up (25 degrees) so forward flight looks level
-    private const float DroneFloor = 0.15f;
+    private const float DroneRadius = 0.2f;
+    private const float DroneMass = 0.6f;         // kg, for the impulse it gives rigid bodies it hits
+    private const float DroneBounce = 0.25f;      // fraction of the speed into a surface that comes back
+    private const float FallLimit = -60f;         // below this the player is put back
     private const float KeyYawRate = 3.5f;        // rad/s with A or D held
     private const float PadRollPitchRate = 9f;    // rad/s at full right-stick deflection
     private const float PadYawRate = 4.5f;
@@ -72,6 +75,9 @@ public partial class FreeCamera : Camera3D
     private double _lastFrame;
 
     private CharacterBody3D? _walker;
+    private CollisionShape3D? _walkerShape;
+    private CharacterBody3D? _droneBody;          // the drone is a small sphere that collides with everything
+    private CollisionShape3D? _droneShape;
     private Vector3 _walkPrev;
     private Vector3 _walkCur;
     private readonly float _gravity = (float)ProjectSettings.GetSetting("physics/3d/default_gravity", 9.8);
@@ -90,13 +96,22 @@ public partial class FreeCamera : Camera3D
         if (!scripted)
             Input.MouseMode = Input.MouseModeEnum.Captured;
 
+        // Two kinematic bodies, one per mode that collides. Only the one in use has an active shape, so the
+        // idle one does not sit in the world as an invisible obstacle.
         _walker = new CharacterBody3D { Name = "Walker" };
-        _walker.AddChild(new CollisionShape3D
+        _walkerShape = new CollisionShape3D
         {
             Shape = new CapsuleShape3D { Radius = BodyRadius, Height = BodyHeight },
             Position = new Vector3(0, BodyHeight / 2, 0),
-        });
+            Disabled = true,
+        };
+        _walker.AddChild(_walkerShape);
         GetParent().CallDeferred(Node.MethodName.AddChild, _walker);
+
+        _droneBody = new CharacterBody3D { Name = "DroneBody" };
+        _droneShape = new CollisionShape3D { Shape = new SphereShape3D { Radius = DroneRadius }, Disabled = true };
+        _droneBody.AddChild(_droneShape);
+        GetParent().CallDeferred(Node.MethodName.AddChild, _droneBody);
 
         GameSettings.Changed += OnSettingsChanged;
         EnterMode(GameSettings.CameraMode);
@@ -131,6 +146,8 @@ public partial class FreeCamera : Camera3D
 
         Mode = mode;
         _velocity = Vector3.Zero;
+        _walkerShape?.SetDeferred(CollisionShape3D.PropertyName.Disabled, mode != CameraMode.Walk);
+        _droneShape?.SetDeferred(CollisionShape3D.PropertyName.Disabled, mode != CameraMode.Drone);
         if (mode == CameraMode.Walk && _walker != null)
         {
             var feet = new Vector3(Position.X, Mathf.Max(Position.Y - EyeHeight, GroundTop), Position.Z);
@@ -143,8 +160,10 @@ public partial class FreeCamera : Camera3D
             // Start level, facing the way you were looking, hovering.
             _attitude = Basis.FromEuler(new Vector3(0, _yaw, 0));
             _rates = Vector3.Zero;
-            _throttle = HoverThrottle;
+            _throttle = 0f;
             _mouseDelta = Vector2.Zero;
+            if (_droneBody != null)
+                _droneBody.Position = Position;
             GlobalBasis = _attitude * new Basis(Vector3.Right, CameraTilt);
         }
         else
@@ -213,6 +232,13 @@ public partial class FreeCamera : Camera3D
         _walker.Velocity = v;
         _walkPrev = _walker.Position;
         _walker.MoveAndSlide();
+        if (_walker.Position.Y < FallLimit)
+        {
+            // Walked off the edge of the world: stand back on the ground in the middle.
+            _walker.Position = new Vector3(0, 1, 0);
+            _walker.Velocity = Vector3.Zero;
+            _walkPrev = _walker.Position;
+        }
         _walkCur = _walker.Position;
 
         for (int i = 0; i < _walker.GetSlideCollisionCount(); i++)
@@ -274,13 +300,13 @@ public partial class FreeCamera : Camera3D
         GlobalPosition += _velocity * dt;
     }
 
-    private static float Stick(int device, JoyAxis axis)
+    private static float Stick(int device, JoyAxis axis, bool expo = true)
     {
         float v = Input.GetJoyAxis(device, axis);
         if (Mathf.Abs(v) < StickDeadzone)
             return 0;
         v = Mathf.Sign(v) * (Mathf.Abs(v) - StickDeadzone) / (1f - StickDeadzone);
-        return 0.65f * v * v * v + 0.35f * v; // a little expo: fine control near the centre, full rate at the edge
+        return expo ? 0.65f * v * v * v + 0.35f * v : v; // a little expo: fine control near the centre, full rate at the edge
     }
 
     private void ProcessDrone(float dt, double now)
@@ -299,13 +325,14 @@ public partial class FreeCamera : Camera3D
             if (Input.IsKeyPressed(Key.A)) yawKeys -= 1;
         }
 
-        // Gamepad: left stick up/down throttle (centre = hover), left X yaw, right Y pitch, right X roll.
+        // Gamepad: left stick up is throttle (released = zero, linear so about a fifth holds height), left X yaw,
+        // right Y pitch, right X roll.
         float padThrottle = 0, padYaw = 0, padPitch = 0, padRoll = 0;
         bool pad = !menu && Input.GetConnectedJoypads().Count > 0;
         if (pad)
         {
             int device = Input.GetConnectedJoypads()[0];
-            padThrottle = -Stick(device, JoyAxis.LeftY);
+            padThrottle = Mathf.Max(-Stick(device, JoyAxis.LeftY, expo: false), 0f);
             padYaw = Stick(device, JoyAxis.LeftX);
             padPitch = Stick(device, JoyAxis.RightY);
             padRoll = Stick(device, JoyAxis.RightX);
@@ -315,13 +342,8 @@ public partial class FreeCamera : Camera3D
             _throttle = KeyThrottleUp;
         else if (throttleKeys < 0)
             _throttle = KeyThrottleDown;
-        else if (!pad)
-            _throttle = HoverThrottle; // no key: the base throttle, which just holds height
         else
-        {
-            float hover = HoverThrottle;
-            _throttle = padThrottle >= 0 ? hover + padThrottle * (1f - hover) : hover + padThrottle * hover;
-        }
+            _throttle = padThrottle; // no key: zero, or the controller stick (released is zero too)
 
         // Stick deflection is a rotation rate. The mouse delta of a frame, divided by the frame time, is the
         // rate that turns the drone by exactly that much, so it feels like a direct rotation.
@@ -350,22 +372,51 @@ public partial class FreeCamera : Camera3D
         if (LimitToC)
             _velocity = _velocity.LimitLength(0.9f * SimClock.Instance.C);
 
-        var position = GlobalPosition + _velocity * dt;
-        if (position.Y < DroneFloor)
-        {
-            position.Y = DroneFloor;
-            _velocity.Y = Mathf.Max(_velocity.Y, 0f);
-            float scrub = Mathf.Exp(-6f * dt); // skidding on the ground
-            _velocity.X *= scrub;
-            _velocity.Z *= scrub;
-        }
-        GlobalPosition = position;
+        MoveDrone(dt);
 
         // The camera sits tilted up on the frame; motor vibration is visual only.
         float t = (float)now;
         float shake = Mathf.Clamp(_velocity.Length() / 20f, 0f, 1.5f) * 0.6f + 0.25f + _throttle * 0.4f;
         float vibration = (Mathf.Sin(t * 53f) + 0.7f * Mathf.Sin(t * 31.7f)) * 0.0012f * shake;
         GlobalBasis = _attitude * new Basis(Vector3.Right, CameraTilt + vibration) * new Basis(Vector3.Back, vibration * 0.7f);
+    }
+
+    /// <summary>Moves the drone through the world: it stops at, bounces off and slides along everything solid.</summary>
+    private void MoveDrone(float dt)
+    {
+        if (_droneBody == null || !_droneBody.IsInsideTree())
+        {
+            GlobalPosition += _velocity * dt;
+            return;
+        }
+
+        _droneBody.GlobalPosition = GlobalPosition;
+        var hit = _droneBody.MoveAndCollide(_velocity * dt);
+        for (int pass = 0; pass < 2 && hit != null; pass++)
+        {
+            var normal = hit.GetNormal();
+            float into = _velocity.Dot(normal);
+            if (into < 0)
+            {
+                // Hard hits bounce a little; resting contact does not, so the drone settles instead of jittering.
+                float bounce = into < -1.5f ? DroneBounce : 0f;
+                if (hit.GetCollider() is RigidBody3D body)
+                    body.ApplyImpulse(normal * (into * DroneMass * (1f + bounce)), hit.GetPosition() - body.GlobalPosition);
+                _velocity -= normal * into * (1f + bounce);
+                var along = _velocity - normal * _velocity.Dot(normal);
+                _velocity -= along * Mathf.Min(1f, 4f * dt); // a little scraping friction
+            }
+            // Slide the rest of the move along the surface that was hit.
+            hit = _droneBody.MoveAndCollide(hit.GetRemainder().Slide(normal));
+        }
+        GlobalPosition = _droneBody.GlobalPosition;
+
+        if (GlobalPosition.Y < FallLimit)
+        {
+            // Flew off the edge of the world: put the drone back above the middle.
+            GlobalPosition = new Vector3(0, 4, 0);
+            _velocity = Vector3.Zero;
+        }
     }
 
     private void ProcessWalk()

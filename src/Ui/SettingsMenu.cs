@@ -5,6 +5,7 @@ using Godot;
 using Lightspeed.Core;
 using Lightspeed.Debug;
 using Lightspeed.Demo;
+using Lightspeed.History;
 using Lightspeed.Player;
 
 namespace Lightspeed.Ui;
@@ -151,6 +152,12 @@ public partial class SettingsMenu : CanvasLayer
             v => SimClock.Instance.SetStepIndex((int)v),
             v => SpeedLadder.FormatSpeed(SpeedLadder.Steps[(int)v].Value),
             "Also on the mouse wheel and the Up / Down arrow keys.");
+        Slider("History length", 5, 120, 1,
+            () => GameSettings.HistorySeconds,
+            v => { GameSettings.HistorySeconds = (float)v; GameSettings.Commit(); },
+            v => $"{v:0} s ({HistoryTexture.EstimateMegabytes(v):0} MB)",
+            "How far back every object's motion is remembered. Light older than this is gone, so you can see objects up to " +
+            "c times this far away. Longer needs more memory (shown: video plus system). Applied a moment after you let go.");
         Choice("Fast parts",
             new[] { "One image (tears)", "Light Echoes", "Exact rays" },
             () => (int)GameSettings.FastParts,
@@ -474,7 +481,7 @@ public partial class SettingsMenu : CanvasLayer
             FocusMode = Control.FocusModeEnum.None,
         };
         // Fixed width, clipped: a long value (the speed of light) must never widen the menu.
-        var value = new Label { CustomMinimumSize = new Vector2(125, 0), ClipText = true, HorizontalAlignment = HorizontalAlignment.Right };
+        var value = new Label { CustomMinimumSize = new Vector2(150, 0), ClipText = true, HorizontalAlignment = HorizontalAlignment.Right };
         row.AddChild(name);
         row.AddChild(slider);
         row.AddChild(value);

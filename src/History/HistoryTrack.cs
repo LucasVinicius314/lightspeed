@@ -10,8 +10,8 @@ namespace Lightspeed.History;
 /// </summary>
 public sealed class HistoryTrack : ISampleSource
 {
-    private readonly Sample[] _ring;
-    private readonly bool[] _breaks;
+    private Sample[] _ring;
+    private bool[] _breaks;
     private int _head = -1;
     private int _count;
 
@@ -117,6 +117,31 @@ public sealed class HistoryTrack : ISampleSource
     /// </summary>
     public bool IsExpired(long currentTick) =>
         IsFinished && (BirthTick < 0 || currentTick - LastTick >= Capacity);
+
+    /// <summary>
+    /// Changes how many samples the ring holds, keeping the newest ones in order. A smaller ring drops the oldest.
+    /// </summary>
+    public void Resize(int capacity)
+    {
+        if (capacity <= 0)
+            throw new ArgumentOutOfRangeException(nameof(capacity));
+        if (capacity == _ring.Length)
+            return;
+
+        int keep = Math.Min(_count, capacity);
+        var ring = new Sample[capacity];
+        var breaks = new bool[capacity];
+        for (int i = 0; i < keep; i++)
+        {
+            int source = Slot(_count - keep + i);
+            ring[i] = _ring[source];
+            breaks[i] = _breaks[source];
+        }
+        _ring = ring;
+        _breaks = breaks;
+        _head = keep - 1;
+        _count = keep;
+    }
 
     private void Push(Sample sample, bool isBreak)
     {
