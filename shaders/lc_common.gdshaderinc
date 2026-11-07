@@ -16,10 +16,14 @@ const int CHUNK = 16; // time slots per layer; HistoryTexture.Chunk
 const int TICK_WRAP = 1048576; // HistoryTexture.TickWrap
 
 // Texel `part` (0: position + teleport flag, 1: rotation) of logical sample k (0 = oldest in the window).
-vec4 fetch(int k, int part) {
+vec4 fetch_o(int obj, int k, int part) {
 	int cap = textureSize(lc_history, 0).z * CHUNK;
 	int s = (lc_head - (lc_count - 1) + k + cap) % cap;
-	return texelFetch(lc_history, ivec3((s % CHUNK) * 2 + part, object_index, s / CHUNK), 0);
+	return texelFetch(lc_history, ivec3((s % CHUNK) * 2 + part, obj, s / CHUNK), 0);
+}
+
+vec4 fetch(int k, int part) {
+	return fetch_o(object_index, k, part);
 }
 
 vec3 sample_pos(int k) {
@@ -48,11 +52,15 @@ void pose(int lo, float a, out vec3 p, out vec4 q) {
 }
 
 // This object's lifetime inside the shared sample window: first and last valid logical sample.
-void lifetime(out int first, out int last, out bool alive, out bool have) {
-	vec4 meta = texelFetch(lc_meta, ivec2(0, object_index), 0);
+void lifetime_o(int obj, out int first, out int last, out bool alive, out bool have) {
+	vec4 meta = texelFetch(lc_meta, ivec2(0, obj), 0);
 	int n = lc_count;
 	alive = meta.y < 0.0;
 	first = max(0, n - 1 - (lc_tick - int(meta.x) + TICK_WRAP) % TICK_WRAP);
 	last = alive ? n - 1 : n - 1 - (lc_tick - int(meta.y) + TICK_WRAP) % TICK_WRAP;
 	have = n > 1 && meta.z > 0.5 && last >= first;
+}
+
+void lifetime(out int first, out int last, out bool alive, out bool have) {
+	lifetime_o(object_index, first, last, alive, have);
 }

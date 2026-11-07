@@ -50,6 +50,7 @@ public partial class NetSession : Node
     private const int FirstDynamicId = 1000;
     private const int ThrowCooldownMs = 100;
     private const int PingIntervalMs = 250;
+    private const int StatsIntervalMs = 1000;
     private const double TimeSlewPerSnapshot = 0.001;
     private const double TimeSnapSeconds = 0.5;
     /// <summary>How far behind the host's world time (in real seconds) puppets are drawn: about three snapshots, so a late or lost one is bridged.</summary>
@@ -132,6 +133,7 @@ public partial class NetSession : Node
     private bool _worldSynced;
     private ulong _lastSendMsec;
     private ulong _lastPingMsec;
+    private ulong _lastStatsMsec;
     private double _pingMin = double.MaxValue;
     private double _pingMax;
     private double _pingSum;
@@ -140,6 +142,9 @@ public partial class NetSession : Node
     private bool _spawnerWasTimed;
     private Node3D? _container;
     private readonly Dictionary<int, string> _players = new();
+    private readonly Dictionary<int, double> _peerPing = new();      // host: each client's own ping to the host
+    private readonly Dictionary<int, int> _peerStep = new();         // host: each client's speed of light (ladder index)
+    private Dictionary<int, (double Ping, int Step)> _stats = new(); // client: what the host last said about everyone
     private readonly Dictionary<int, RemoteAvatar> _avatars = new();
     private readonly Dictionary<int, PoseState> _clientPoses = new();
     private readonly Dictionary<int, NetBody> _bodies = new();
@@ -311,6 +316,8 @@ public partial class NetSession : Node
             return;
         int peer = (int)id;
         _players.Remove(peer);
+        _peerPing.Remove(peer);
+        _peerStep.Remove(peer);
         _clientPoses.Remove(peer);
         RemoveAvatar(peer);
         BroadcastRoster();
@@ -342,6 +349,9 @@ public partial class NetSession : Node
             avatar.Retire();
         _avatars.Clear();
         _players.Clear();
+        _peerPing.Clear();
+        _peerStep.Clear();
+        _stats.Clear();
         _clientPoses.Clear();
         _bodies.Clear();
         _lastThrowMsec.Clear();
@@ -388,24 +398,35 @@ public partial class NetSession : Node
             return;
         _lastSendMsec = now;
         if (State == Role.Host)
+        {
             SendSnapshot();
+            if (now - _lastStatsMsec >= StatsIntervalMs)
+            {
+                _lastStatsMsec = now;
+                BroadcastStats();
+            }
+        }
         else if (_welcomed)
         {
             SendMyPose();
             if (now - _lastPingMsec >= PingIntervalMs)
             {
                 _lastPingMsec = now;
-                RpcId(1, MethodName.RpcPing, (long)Time.GetTicksUsec());
+                RpcId(1, MethodName.RpcPing, (long)Time.GetTicksUsec(), (float)PingMs);
             }
         }
     }
 
     // Round-trip time: the client stamps a ping, the host bounces it back unchanged, the client reads the clock again.
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
-    private void RpcPing(long sentMicroseconds)
+    private void RpcPing(long sentMicroseconds, float reportedPingMs)
     {
-        if (IsHost)
-            RpcId(Multiplayer.GetRemoteSenderId(), MethodName.RpcPong, sentMicroseconds);
+        if (!IsHost)
+            return;
+        int peer = Multiplayer.GetRemoteSenderId();
+        if (_players.ContainsKey(peer) && float.IsFinite(reportedPingMs))
+            _peerPing[peer] = reportedPingMs; // the client's own last measurement, for the roster
+        RpcId(peer, MethodName.RpcPong, sentMicroseconds);
     }
 
     [Rpc(TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
@@ -526,24 +547,25 @@ public partial class NetSession : Node
             })
             .ToList();
         var clock = SimClock.Instance;
-        RpcId(peer, MethodName.RpcWelcome, clock.WorldTime, clock.StepIndex, clock.TimeScale, clock.Paused, NetCodec.EncodeBodies(bodies));
+        RpcId(peer, MethodName.RpcWelcome, clock.WorldTime, clock.TimeScale, clock.Paused, NetCodec.EncodeBodies(bodies));
     }
 
     [Rpc]
-    private void RpcWelcome(double worldTime, int stepIndex, float timeScale, bool paused, byte[] bodies)
+    private void RpcWelcome(double worldTime, float timeScale, bool paused, byte[] bodies)
     {
         if (State != Role.Client || Multiplayer.GetRemoteSenderId() != 1)
             return;
         var clock = SimClock.Instance;
         clock.WorldOffset = worldTime - clock.Time;
         _worldSynced = true;
-        clock.ApplyFromHost(stepIndex, timeScale, paused);
+        clock.ApplyFromHost(timeScale, paused);
         BecomePuppets();
         if (NetCodec.TryDecodeBodies(bodies, out var list))
             foreach (var b in list)
                 SpawnPuppet(b.Id, b.Kind, b.Color, b.Position, b.Rotation);
         _welcomed = true;
-        SetStatus("Connected. The host runs the physics and the speed of light.");
+        ReportLight(clock.StepIndex);
+        SetStatus("Connected. The host runs the physics and the clock; the speed of light is your own.");
     }
 
     private void BroadcastRoster()
@@ -628,21 +650,95 @@ public partial class NetSession : Node
         _worldSynced = true;
     }
 
+    // ------------------------------------------------------------------ roster: who is here, ping, speed of light
+
+    /// <summary>One row of the roster. <see cref="PingMs"/> is the player's round trip to the host (-1 unknown, or the host itself).</summary>
+    public readonly record struct PlayerInfo(int Id, string Name, bool IsHost, bool IsMe, double PingMs, int StepIndex)
+    {
+        /// <summary>This player's speed of light in m/s, or -1 until it is known.</summary>
+        public float LightSpeed => StepIndex >= 0 && StepIndex < SpeedLadder.Steps.Count ? SpeedLadder.Steps[StepIndex].Value : -1f;
+    }
+
+    /// <summary>Everyone in the session, the host first, then by join order. Empty offline.</summary>
+    public IReadOnlyList<PlayerInfo> Roster()
+    {
+        var list = new List<PlayerInfo>();
+        if (State is not (Role.Host or Role.Client))
+            return list;
+        int me = State == Role.Host ? 1 : Multiplayer.GetUniqueId();
+        foreach (var (id, name) in _players.OrderBy(p => p.Key))
+        {
+            double ping = -1;
+            int step = -1;
+            if (id == me)
+            {
+                step = SimClock.Instance.StepIndex;
+                ping = State == Role.Client ? PingMs : -1;
+            }
+            else if (State == Role.Host)
+            {
+                ping = _peerPing.GetValueOrDefault(id, -1);
+                step = _peerStep.GetValueOrDefault(id, -1);
+            }
+            else if (_stats.TryGetValue(id, out var stat))
+            {
+                ping = stat.Ping;
+                step = stat.Step;
+            }
+            list.Add(new PlayerInfo(id, name, id == 1, id == me, ping, step));
+        }
+        return list;
+    }
+
+    /// <summary>Client: tell the host which speed of light this player chose (it only matters for the roster).</summary>
+    public void ReportLight(int stepIndex)
+    {
+        if (State == Role.Client && _welcomed)
+            RpcId(1, MethodName.RpcLight, stepIndex);
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
+    private void RpcLight(int stepIndex)
+    {
+        int peer = Multiplayer.GetRemoteSenderId();
+        if (IsHost && _players.ContainsKey(peer) && stepIndex >= 0 && stepIndex < SpeedLadder.Steps.Count)
+            _peerStep[peer] = stepIndex;
+    }
+
+    private void BroadcastStats()
+    {
+        var ids = _players.Keys.OrderBy(i => i).ToArray();
+        var pings = ids.Select(i => (float)_peerPing.GetValueOrDefault(i, -1)).ToArray();
+        var steps = ids.Select(i => i == 1 ? SimClock.Instance.StepIndex : _peerStep.GetValueOrDefault(i, -1)).ToArray();
+        Rpc(MethodName.RpcStats, ids, pings, steps);
+    }
+
+    [Rpc(TransferMode = MultiplayerPeer.TransferModeEnum.Unreliable)]
+    private void RpcStats(int[] ids, float[] pings, int[] steps)
+    {
+        if (State != Role.Client || Multiplayer.GetRemoteSenderId() != 1 || ids.Length != pings.Length || ids.Length != steps.Length)
+            return;
+        var stats = new Dictionary<int, (double, int)>(ids.Length);
+        for (int i = 0; i < ids.Length; i++)
+            stats[ids[i]] = (pings[i], steps[i]);
+        _stats = stats;
+    }
+
     // ------------------------------------------------------------------ messages: shared settings
 
     private void BroadcastSettings()
     {
         var clock = SimClock.Instance;
-        Rpc(MethodName.RpcSettings, clock.StepIndex, clock.TimeScale, clock.Paused);
+        Rpc(MethodName.RpcSettings, clock.TimeScale, clock.Paused);
     }
 
     private void BroadcastStep() => Rpc(MethodName.RpcStep);
 
     [Rpc]
-    private void RpcSettings(int stepIndex, float timeScale, bool paused)
+    private void RpcSettings(float timeScale, bool paused)
     {
         if (State == Role.Client && Multiplayer.GetRemoteSenderId() == 1)
-            SimClock.Instance.ApplyFromHost(stepIndex, timeScale, paused);
+            SimClock.Instance.ApplyFromHost(timeScale, paused);
     }
 
     [Rpc]
@@ -652,18 +748,10 @@ public partial class NetSession : Node
             SimClock.Instance.ApplyStepFromHost();
     }
 
-    // A client's own input on the shared settings goes to the host, which applies it and tells everyone.
-    public void RequestStepIndex(int index) => RpcId(1, MethodName.RpcAskStepIndex, index);
+    // A client's own input on the shared settings (time scale, pause, stepping) goes to the host, which applies it and tells everyone.
     public void RequestTimeScale(float scale) => RpcId(1, MethodName.RpcAskTimeScale, scale);
     public void RequestPaused(bool paused) => RpcId(1, MethodName.RpcAskPaused, paused);
     public void RequestStep() => RpcId(1, MethodName.RpcAskStep);
-
-    [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
-    private void RpcAskStepIndex(int index)
-    {
-        if (IsHost)
-            SimClock.Instance.SetStepIndex(index);
-    }
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer)]
     private void RpcAskTimeScale(float scale)

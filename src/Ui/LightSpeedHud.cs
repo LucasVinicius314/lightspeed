@@ -14,7 +14,10 @@ namespace Lightspeed.Ui;
 /// </summary>
 public partial class LightSpeedHud : CanvasLayer
 {
-    private Label _title = null!;
+    private Label _speed = null!;
+    private VBoxContainer _players = null!;
+    private string _lastPlayers = "";
+    private string _lastSpeed = "";
     private Label _value = null!;
     private Label _detail = null!;
     private Label _keys = null!;
@@ -33,36 +36,55 @@ public partial class LightSpeedHud : CanvasLayer
         // Bottom block: a centred glass panel that only grows as wide as its content.
         var bottom = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
         bottom.SetAnchorsPreset(Control.LayoutPreset.BottomWide);
-        bottom.OffsetBottom = -14;
+        bottom.OffsetBottom = -8;
         bottom.GrowVertical = Control.GrowDirection.Begin;
         root.AddChild(bottom);
         var panel = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        panel.AddThemeStyleboxOverride("panel", UiTheme.Box(new Color(0.03f, 0.04f, 0.07f, 0.62f), 10, 22, 10));
+        panel.AddThemeStyleboxOverride("panel", UiTheme.Box(new Color(0.03f, 0.04f, 0.07f, 0.55f), 8, 14, 5));
         bottom.AddChild(panel);
         var box = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
-        box.AddThemeConstantOverride("separation", 3);
+        box.AddThemeConstantOverride("separation", 0);
         panel.AddChild(box);
 
-        _title = MakeLabel(box, 12);
-        _title.Text = "SPEED OF LIGHT";
-        _title.AddThemeColorOverride("font_color", UiTheme.Accent);
-        _value = MakeLabel(box, 30);
-        _detail = MakeLabel(box, 14);
+        _value = MakeLabel(box, 20);
+        _value.AddThemeColorOverride("font_color", UiTheme.Accent);
+        _detail = MakeLabel(box, 12);
         _detail.AddThemeColorOverride("font_color", UiTheme.Dim);
 
         _bar = new Control
         {
-            CustomMinimumSize = new Vector2(560, 36),
+            CustomMinimumSize = new Vector2(380, 28),
             SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
         _bar.Draw += DrawBar;
         box.AddChild(_bar);
 
-        _keys = MakeLabel(box, 12);
+        _keys = MakeLabel(box, 11);
         _keys.AddThemeColorOverride("font_color", UiTheme.Dim);
         DebugMode.Changed += _ => RefreshKeys();
         RefreshKeys();
+
+        // Bottom-left chip: how fast the player is moving through the world, whatever the movement mode.
+        var corner = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        corner.SetAnchorsPreset(Control.LayoutPreset.BottomLeft);
+        corner.OffsetLeft = 12;
+        corner.OffsetBottom = -8;
+        corner.GrowHorizontal = Control.GrowDirection.End;
+        corner.GrowVertical = Control.GrowDirection.Begin;
+        corner.AddThemeStyleboxOverride("panel", UiTheme.Box(new Color(0.03f, 0.04f, 0.07f, 0.55f), 8, 12, 5));
+        root.AddChild(corner);
+        _speed = MakeLabel(corner, 16);
+        _speed.CustomMinimumSize = new Vector2(190, 0); // fixed width, so the chip does not jitter as digits change
+
+        // Top-right: who is in the session and how good their connection is (only while in one).
+        _players = new VBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+        _players.SetAnchorsPreset(Control.LayoutPreset.TopRight);
+        _players.OffsetRight = -12;
+        _players.OffsetTop = 12;
+        _players.GrowHorizontal = Control.GrowDirection.Begin;
+        _players.AddThemeConstantOverride("separation", 2);
+        root.AddChild(_players);
 
         // Top chip: what mode the player is in and whether time is running.
         var top = new CenterContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
@@ -82,11 +104,13 @@ public partial class LightSpeedHud : CanvasLayer
     public override void _ExitTree() => HistoryTexture.Resized -= Refresh;
 
     private void RefreshKeys() =>
-        _keys.Text = $"Scroll / Up / Down  light speed     V  mode     P  pause     Tab  settings     H  keys     F3  debug: {DebugMode.Describe(DebugMode.Current)}";
+        _keys.Text = $"Scroll  c     V  mode     P  pause     Tab  settings     H  keys     F3  debug: {DebugMode.Describe(DebugMode.Current)}";
 
     public override void _Process(double delta)
     {
         var clock = SimClock.Instance;
+        UpdateSpeed(clock);
+        UpdatePlayers();
         string mode = GameSettings.CameraMode.ToString().ToUpperInvariant();
         string time = clock.Paused ? $"PAUSED  tick {clock.Tick}  (. steps)"
             : Mathf.IsEqualApprox(clock.TimeScale, 1f) ? "" : $"time x{clock.TimeScale:0.##}";
@@ -105,6 +129,50 @@ public partial class LightSpeedHud : CanvasLayer
             return;
         _lastStatus = text;
         _status.Text = text;
+    }
+
+    private void UpdatePlayers()
+    {
+        var roster = NetSession.Instance.Roster();
+        string key = string.Join("|", roster.Select(p => $"{p.Id}:{p.Name}:{(int)p.PingMs}"));
+        if (key == _lastPlayers)
+            return;
+        _lastPlayers = key;
+        foreach (var child in _players.GetChildren())
+            child.QueueFree();
+        foreach (var p in roster)
+        {
+            var chip = new PanelContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+            chip.AddThemeStyleboxOverride("panel", UiTheme.Box(new Color(0.03f, 0.04f, 0.07f, 0.55f), 8, 10, 3));
+            var line = new HBoxContainer { MouseFilter = Control.MouseFilterEnum.Ignore };
+            line.AddThemeConstantOverride("separation", 10);
+            chip.AddChild(line);
+            var name = MakeLabel(line, 13);
+            name.Text = p.Name + (p.IsMe ? " (you)" : "");
+            name.CustomMinimumSize = new Vector2(110, 0);
+            name.ClipText = true;
+            name.HorizontalAlignment = HorizontalAlignment.Left;
+            var ping = MakeLabel(line, 13);
+            ping.Text = p.IsHost ? "host" : p.PingMs >= 0 ? $"{p.PingMs:0} ms" : "-";
+            ping.CustomMinimumSize = new Vector2(52, 0);
+            ping.HorizontalAlignment = HorizontalAlignment.Right;
+            ping.AddThemeColorOverride("font_color", p.IsHost || p.PingMs < 0 ? UiTheme.Dim : SettingsMenu.PingColor(p.PingMs));
+            _players.AddChild(chip);
+        }
+    }
+
+    private void UpdateSpeed(SimClock clock)
+    {
+        if (GetViewport().GetCamera3D() is not Player.FreeCamera camera)
+            return;
+        float speed = camera.Velocity.Length();
+        string text = speed < 0.005f
+            ? "0 m/s\n0 c"
+            : SpeedLadder.FormatSpeed(speed) + "\n" + SpeedLadder.FormatFractionOfC(speed);
+        if (text == _lastSpeed)
+            return;
+        _lastSpeed = text;
+        _speed.Text = text;
     }
 
     private static Label MakeLabel(Control parent, int size)
@@ -145,7 +213,7 @@ public partial class LightSpeedHud : CanvasLayer
     {
         var clock = SimClock.Instance;
         var step = SpeedLadder.Steps[clock.StepIndex];
-        _value.Text = SpeedLadder.FormatSpeed(clock.C) + (step.Name != null ? $"  ({step.Name})" : "");
+        _value.Text = "c = " + SpeedLadder.FormatSpeed(clock.C) + (step.Name != null ? $"  ({step.Name})" : "");
 
         double history = HistoryTexture.Capacity * SimClock.TickDelta;
         _detail.Text = $"{SpeedLadder.FormatFractionOfC(clock.C)}   |   " +
@@ -159,8 +227,8 @@ public partial class LightSpeedHud : CanvasLayer
         int count = SpeedLadder.Steps.Count;
         float progress = (float)SimClock.Instance.StepIndex / (count - 1);
         var size = _bar.Size;
-        const float h = 18f; // bar height; the labels sit below it
-        var track = new Rect2(0, 5, size.X, h - 10);
+        const float h = 14f; // bar height; the labels sit below it
+        var track = new Rect2(0, 3, size.X, h - 6);
 
         _bar.DrawRect(track, new Color(0, 0, 0, 0.6f));
         _bar.DrawRect(new Rect2(track.Position, new Vector2(track.Size.X * progress, track.Size.Y)), new Color(1f, 0.6f, 0.2f));
@@ -172,7 +240,7 @@ public partial class LightSpeedHud : CanvasLayer
         _bar.DrawRect(new Rect2(size.X * progress - 2, 0, 4, h), Colors.White);
 
         var font = ThemeDB.FallbackFont;
-        _bar.DrawString(font, new Vector2(0, h + 14), "1 cm/s", fontSize: 12);
-        _bar.DrawString(font, new Vector2(size.X - 14, h + 14), "c", fontSize: 12);
+        _bar.DrawString(font, new Vector2(0, h + 11), "1 cm/s", fontSize: 11);
+        _bar.DrawString(font, new Vector2(size.X - 12, h + 11), "c", fontSize: 11);
     }
 }

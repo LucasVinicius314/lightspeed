@@ -325,18 +325,16 @@ public partial class SettingsMenu : CanvasLayer
         _box.AddChild(joinRow);
 
         SubSection("Players");
-        var players = new Label
-        {
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(60, 0),
-        };
-        _box.AddChild(players);
+        var roster = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        roster.AddThemeConstantOverride("separation", 4);
+        _box.AddChild(roster);
+        string rosterKey = "\0"; // forces the first build
         var hint = new Label
         {
-            Text = "The host runs the physics and decides the speed of light, the time scale and pause; a client's " +
-                   "changes to them are sent to the host. Other players are seen through the same light delay as " +
-                   "everything else, plus network latency.",
+            Text = "The host runs the physics and decides the time scale and pause; a client's changes to them are " +
+                   "sent to the host. The speed of light is each player's own: it only changes how you see the light " +
+                   "history. Other players are seen through your light delay plus network latency. Ping is each " +
+                   "player's round trip to the host.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             CustomMinimumSize = new Vector2(60, 0),
@@ -354,11 +352,83 @@ public partial class SettingsMenu : CanvasLayer
             host.Disabled = !offline;
             join.Disabled = !offline;
             leave.Disabled = offline;
-            players.Text = net.Players.Count == 0
-                ? "Not in a session."
-                : string.Join("\n", net.Players.OrderBy(p => p.Key).Select(p => $"{(p.Key == 1 ? "Host" : "Player")}: {p.Value}"))
-                  + (net.PingMs >= 0 ? $"\nPing to the host: {net.PingMs:0} ms" : "");
+            var players = net.Roster();
+            string key = string.Join("|", players.Select(p => $"{p.Id}:{p.Name}:{p.StepIndex}:{(int)p.PingMs}"));
+            if (key == rosterKey)
+                return;
+            rosterKey = key;
+            BuildRoster(roster, players);
         });
+    }
+
+    private const int RosterNameWidth = 150;
+    private const int RosterLightWidth = 92;
+    private const int RosterPingWidth = 64;
+
+    /// <summary>One row per connected player, stacked vertically: name, their speed of light and their ping to the host.</summary>
+    private static void BuildRoster(VBoxContainer roster, IReadOnlyList<NetSession.PlayerInfo> players)
+    {
+        foreach (var child in roster.GetChildren())
+            child.QueueFree();
+        if (players.Count == 0)
+        {
+            roster.AddChild(new Label { Text = "Not in a session.", Modulate = UiTheme.Dim });
+            return;
+        }
+
+        var header = new HBoxContainer();
+        header.AddChild(RosterCell("PLAYER", RosterNameWidth, HorizontalAlignment.Left, UiTheme.Dim, 11, expand: true));
+        header.AddChild(RosterCell("LIGHT", RosterLightWidth, HorizontalAlignment.Right, UiTheme.Dim, 11));
+        header.AddChild(RosterCell("PING", RosterPingWidth, HorizontalAlignment.Right, UiTheme.Dim, 11));
+        var headerMargin = new MarginContainer(); // lines the columns up with the padded rows below
+        headerMargin.AddThemeConstantOverride("margin_left", 11);
+        headerMargin.AddThemeConstantOverride("margin_right", 11);
+        headerMargin.AddChild(header);
+        roster.AddChild(headerMargin);
+
+        foreach (var p in players)
+        {
+            var row = new PanelContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            row.AddThemeStyleboxOverride("panel", UiTheme.Box(p.IsMe ? new Color(1f, 0.6f, 0.2f, 0.14f) : UiTheme.Control, 6, 10, 5,
+                p.IsMe ? new Color(1f, 0.6f, 0.2f, 0.45f) : new Color(1, 1, 1, 0.10f)));
+            var line = new HBoxContainer();
+            row.AddChild(line);
+
+            string tag = p.IsHost ? "HOST" : "";
+            string name = p.Name + (p.IsMe ? "  (you)" : "");
+            var nameBox = new HBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            nameBox.AddThemeConstantOverride("separation", 8);
+            nameBox.AddChild(RosterCell(name, RosterNameWidth - 54, HorizontalAlignment.Left, Colors.White, 14, expand: true));
+            if (tag.Length > 0)
+                nameBox.AddChild(RosterCell(tag, 46, HorizontalAlignment.Center, UiTheme.Accent, 11));
+            line.AddChild(nameBox);
+
+            string light = p.LightSpeed > 0 ? SpeedLadder.FormatSpeed(p.LightSpeed) : "-";
+            line.AddChild(RosterCell(light, RosterLightWidth, HorizontalAlignment.Right, UiTheme.Dim, 13));
+
+            string ping = p.IsHost ? "host" : p.PingMs >= 0 ? $"{p.PingMs:0} ms" : "-";
+            var pingColor = p.IsHost || p.PingMs < 0 ? UiTheme.Dim : PingColor(p.PingMs);
+            line.AddChild(RosterCell(ping, RosterPingWidth, HorizontalAlignment.Right, pingColor, 13));
+            roster.AddChild(row);
+        }
+    }
+
+    public static Color PingColor(double ms) =>
+        ms < 60 ? new Color(0.45f, 0.9f, 0.5f) : ms < 150 ? new Color(0.95f, 0.8f, 0.3f) : new Color(0.95f, 0.4f, 0.35f);
+
+    private static Label RosterCell(string text, int width, HorizontalAlignment align, Color color, int size, bool expand = false)
+    {
+        var label = new Label
+        {
+            Text = text,
+            ClipText = true,
+            HorizontalAlignment = align,
+            CustomMinimumSize = new Vector2(width, 0), // fixed minimum: long names must not widen the panel
+            SizeFlagsHorizontal = expand ? Control.SizeFlags.ExpandFill : Control.SizeFlags.ShrinkBegin,
+        };
+        label.AddThemeFontSizeOverride("font_size", size);
+        label.AddThemeColorOverride("font_color", color);
+        return label;
     }
 
     private void BuildControlsSection()

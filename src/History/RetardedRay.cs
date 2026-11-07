@@ -156,9 +156,10 @@ public static class RetardedRay
     /// </summary>
     public static List<RayInterval> Intervals(
         ISampleSource h, double dt, Vector3 camera, float c, double age, double objectRadius, double linearBound,
-        int maxIntervals = MaxIntervals)
+        int maxIntervals = MaxIntervals, List<RayInterval>? into = null)
     {
-        var result = new List<RayInterval>();
+        var result = into ?? new List<RayInterval>();
+        result.Clear();
         int n = h.Count;
         if (n < 2)
             return result;

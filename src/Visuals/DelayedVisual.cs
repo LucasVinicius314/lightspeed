@@ -43,10 +43,8 @@ public partial class DelayedVisual : MeshInstance3D
     public bool IsRayRendered { get; private set; }
 
     // Names used every frame, converted once: a C# string becomes a new StringName on every call otherwise.
-    private static readonly StringName LinBound = "lin_bound", AngBound = "ang_bound", IvCount = "iv_count",
-        IvSphere = "iv_sphere", IvK = "iv_k", RectParam = "rect", SpeedBound = "speed_bound", Suppress = "suppress";
+    private static readonly StringName SpeedBound = "speed_bound", Suppress = "suppress";
 
-    private float _lastLinear = -1f, _lastAngular = -1f;
     private ShaderMaterial _material = null!;
     private readonly List<MeshInstance3D> _extraImages = new();
     private float _radius;
@@ -54,9 +52,8 @@ public partial class DelayedVisual : MeshInstance3D
     private Mesh? _sourceMesh;
     private float _tessellatedEdge;
     private Shape? _shape;
-    private MeshInstance3D? _rayProxy;
-    private ShaderMaterial? _rayMaterial;
     private bool _suppressed;
+    private readonly List<RayInterval> _intervals = new();
     private readonly Vector4[] _intervalSpheres = new Vector4[RetardedRay.MaxIntervals];
     private readonly Vector2[] _intervalRanges = new Vector2[RetardedRay.MaxIntervals];
 
@@ -156,80 +153,92 @@ public partial class DelayedVisual : MeshInstance3D
             _extraImages[i].Visible = i < ImageCount - 1;
     }
 
-    /// <summary>Keeps the per-pixel renderer's quad and its per-frame uniforms in step with the part.</summary>
-    private void UpdateRayProxy()
+    /// <summary>
+    /// While this part is ray-rendered, hands the shared <see cref="RayBatch"/> its row for this frame: the shape,
+    /// the few stretches of history in which light from the part can reach the camera (with a sphere around where the
+    /// part is during each, so a pixel only marches where its ray can hit) and the screen rectangle that bounds them.
+    /// </summary>
+    private void SubmitRay()
     {
         if (!IsRayRendered)
-        {
-            if (_rayProxy != null)
-                _rayProxy.Visible = false;
             return;
-        }
-
-        if (_rayProxy == null)
-            CreateRayProxy();
-        _rayProxy!.Visible = true;
+        var batch = RayBatch.Ensure(GetTree());
+        if (!batch.BeginFrame(GetViewport()))
+            return;
 
         var track = Track!;
         float linear = track.PeakLinearSpeed * 1.05f + 0.01f;
         float angular = track.PeakAngularSpeed * 1.05f + 0.001f;
-        if (linear != _lastLinear || angular != _lastAngular)
-        {
-            _lastLinear = linear;
-            _lastAngular = angular;
-            _rayMaterial!.SetShaderParameter(LinBound, linear);
-            _rayMaterial.SetShaderParameter(AngBound, angular);
-        }
-        UploadIntervals(track, linear);
-    }
+        float c = SimClock.Instance.C;
+        RetardedRay.Intervals(track, SimClock.TickDelta, batch.CameraPosition, c, HistoryTexture.AgeOf(track), _radius,
+            linear, into: _intervals);
 
-    /// <summary>
-    /// Works out on the CPU the few stretches of history in which light from this part can reach the camera,
-    /// with a sphere around where the part is during each, so a pixel only marches where its ray can hit.
-    /// </summary>
-    private void UploadIntervals(HistoryTrack track, float linearBound)
-    {
-        int count = 0;
-        var camera = GetViewport().GetCamera3D();
-        if (camera != null)
+        // The solver counts samples within this track; the texture counts them within the shared window.
+        double offset = (HistoryTexture.Instance.SampleCount - 1)
+                        - (SimClock.Instance.Tick - track.LastTick) - (track.Count - 1);
+        int count = Mathf.Min(_intervals.Count, RetardedRay.MaxIntervals);
+        if (count == 0)
+            return;
+        for (int i = 0; i < count; i++)
         {
-            var intervals = RetardedRay.Intervals(track, SimClock.TickDelta, camera.GlobalPosition.ToNumerics(),
-                SimClock.Instance.C, HistoryTexture.AgeOf(track), _radius, linearBound);
-
-            // The solver counts samples within this track; the texture counts them within the shared window.
-            double offset = (HistoryTexture.Instance.SampleCount - 1)
-                            - (SimClock.Instance.Tick - track.LastTick) - (track.Count - 1);
-            count = Mathf.Min(intervals.Count, RetardedRay.MaxIntervals);
-            for (int i = 0; i < count; i++)
-            {
-                var iv = intervals[i];
-                var centre = iv.Center.ToGodot();
-                _intervalSpheres[i] = new Vector4(centre.X, centre.Y, centre.Z, iv.Radius);
-                _intervalRanges[i] = new Vector2((float)(iv.KNewest + offset), (float)(iv.KOldest + offset));
-            }
+            var iv = _intervals[i];
+            var centre = iv.Center.ToGodot();
+            _intervalSpheres[i] = new Vector4(centre.X, centre.Y, centre.Z, iv.Radius);
+            _intervalRanges[i] = new Vector2((float)(iv.KNewest + offset), (float)(iv.KOldest + offset));
         }
-        _rayMaterial!.SetShaderParameter(IvCount, count);
-        _rayMaterial.SetShaderParameter(IvSphere, _intervalSpheres);
-        _rayMaterial.SetShaderParameter(IvK, _intervalRanges);
-        var rect = ScreenRect(camera, count);
-        _rayMaterial.SetShaderParameter(RectParam, rect);
-        _rayProxy!.Visible = rect.X < rect.Z && rect.Y < rect.W; // an empty rectangle: the part is off screen
+
+        var rect = ScreenRect(batch, count);
+        if (rect.X >= rect.Z || rect.Y >= rect.W)
+            return; // an empty rectangle: the part is off screen
+        var row = batch.NextRow();
+        if (row.IsEmpty)
+            return;
+
+        var shape = _shape!.Value;
+        var albedo = Albedo.SrgbToLinear();
+        row[0] = track.Row;
+        row[1] = (int)shape.Kind;
+        row[2] = _radius;
+        row[3] = count;
+        row[4] = shape.Size.X;
+        row[5] = shape.Size.Y;
+        row[6] = shape.Size.Z;
+        row[7] = linear;
+        row[8] = albedo.R;
+        row[9] = albedo.G;
+        row[10] = albedo.B;
+        row[11] = albedo.A;
+        row[12] = rect.X;
+        row[13] = rect.Y;
+        row[14] = rect.Z;
+        row[15] = rect.W;
+        row[16] = angular;
+        for (int i = 0; i < count; i++)
+        {
+            var sph = _intervalSpheres[i];
+            int o = (5 + i) * 4; // texels 5..20
+            row[o] = sph.X;
+            row[o + 1] = sph.Y;
+            row[o + 2] = sph.Z;
+            row[o + 3] = sph.W;
+            var range = _intervalRanges[i];
+            int k = (21 + i / 2) * 4 + i % 2 * 2; // texels 21..28, two intervals each
+            row[k] = range.X;
+            row[k + 1] = range.Y;
+        }
     }
 
     /// <summary>
     /// Screen rectangle (NDC min xy, max xy) that covers every interval sphere, so the quad only shades pixels
-    /// where a ray can hit the part. The whole screen when the camera is inside or near a sphere.
+    /// where a ray can hit the part. The whole screen when the camera is inside or near a sphere; empty when
+    /// the part is off screen.
     /// </summary>
-    private Vector4 ScreenRect(Camera3D? camera, int count)
+    private Vector4 ScreenRect(RayBatch batch, int count)
     {
+        var camera = batch.Camera!;
         var full = new Vector4(-1, -1, 1, 1);
-        if (camera == null)
-            return full;
-        if (count == 0)
-            return Vector4.Zero;
-
-        var view = camera.GlobalTransform.AffineInverse();
-        var proj = camera.GetCameraProjection();
+        var view = batch.View;
+        var proj = batch.Projection;
         float sx = proj.X.X, sy = proj.Y.Y; // NDC per unit of x/depth and y/depth
         var min = new Vector2(float.MaxValue, float.MaxValue);
         var max = new Vector2(float.MinValue, float.MinValue);
@@ -254,27 +263,6 @@ public partial class DelayedVisual : MeshInstance3D
         if (max.X <= -1f || min.X >= 1f || max.Y <= -1f || min.Y >= 1f)
             return Vector4.Zero; // entirely outside the screen
         return new Vector4(Mathf.Max(min.X, -1f), Mathf.Max(min.Y, -1f), Mathf.Min(max.X, 1f), Mathf.Min(max.Y, 1f));
-    }
-
-    private void CreateRayProxy()
-    {
-        var shape = _shape!.Value;
-        _rayMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/delayed_ray.gdshader") };
-        _rayMaterial.SetShaderParameter("object_index", Track?.Row ?? 0);
-        _rayMaterial.SetShaderParameter("albedo", Albedo);
-        _rayMaterial.SetShaderParameter("shape_kind", (int)shape.Kind);
-        _rayMaterial.SetShaderParameter("shape_size", shape.Size.ToGodot());
-        _rayMaterial.SetShaderParameter("obj_radius", _radius);
-
-        _rayProxy = new MeshInstance3D
-        {
-            Mesh = new QuadMesh { Size = new Vector2(2, 2) },
-            MaterialOverride = _rayMaterial,
-            CastShadow = ShadowCastingSetting.Off,
-            CustomAabb = CustomAabb,
-            IgnoreOcclusionCulling = true,
-        };
-        AddChild(_rayProxy);
     }
 
     /// <summary>The exact solid for primitives the per-pixel renderer understands; null for any other mesh.</summary>
@@ -323,7 +311,7 @@ public partial class DelayedVisual : MeshInstance3D
             return;
         }
         UpdateImages();
-        UpdateRayProxy();
+        SubmitRay();
         if (Mode != SolveMode.Cpu)
             return;
 

@@ -65,7 +65,7 @@ public partial class SimClock : Node
     private long _pauseAtTick = -1;
     private bool _pausePending;
 
-    /// <summary>Raised when the speed of light, time scale or pause changed through the host-side path (a host broadcasts it).</summary>
+    /// <summary>Raised when the time scale or pause changed through the host-side path (a host broadcasts it).</summary>
     public event Action? SharedChanged;
 
     /// <summary>Raised when a single tick was stepped while paused (a host tells clients to step too).</summary>
@@ -157,7 +157,7 @@ public partial class SimClock : Node
         }
     }
 
-    // The shared settings (speed of light, time scale, pause, stepping) belong to the host in a session. A
+    // The shared settings (time scale, pause, stepping) belong to the host in a session. A
     // client's own input is sent to the host, which applies it and tells everyone; the Apply... methods below
     // are what actually changes the clock, on the host and, for host-sent changes, on clients.
 
@@ -186,18 +186,20 @@ public partial class SimClock : Node
     public void StepFaster() => SetStepIndex(StepIndex + 1);
     public void StepSlower() => SetStepIndex(StepIndex - 1);
 
+    /// <summary>
+    /// The speed of light is every player's own, even in a session: it only changes how this player sees the
+    /// light history, never the simulation. A client tells the host (for the roster) but is not asked to agree.
+    /// </summary>
     public void SetStepIndex(int index)
     {
         index = Mathf.Clamp(index, 0, SpeedLadder.Steps.Count - 1);
-        if (NetSession.IsClient) { NetSession.Instance.RequestStepIndex(index); return; }
-        if (ApplyStepIndex(index))
-            SharedChanged?.Invoke();
+        if (ApplyStepIndex(index) && NetSession.IsClient)
+            NetSession.Instance.ReportLight(index);
     }
 
-    /// <summary>Client: take the host's shared settings.</summary>
-    public void ApplyFromHost(int stepIndex, float timeScale, bool paused)
+    /// <summary>Client: take the host's shared settings (time scale and pause; the speed of light stays your own).</summary>
+    public void ApplyFromHost(float timeScale, bool paused)
     {
-        ApplyStepIndex(Mathf.Clamp(stepIndex, 0, SpeedLadder.Steps.Count - 1));
         ApplyTimeScale(timeScale);
         ApplyPaused(paused);
     }
