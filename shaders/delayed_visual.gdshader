@@ -15,6 +15,7 @@ uniform bool cpu_mode = false;
 uniform bool suppress = false; // this draw is replaced by the per-pixel renderer
 uniform int image_index = 0; // which image of the vertex this draw shows (0 = latest)
 uniform float speed_bound = 0.0; // upper bound on any vertex's speed, m/s
+uniform float min_view_distance = 0.0; // fragments closer than this to the camera are discarded (the player's own model)
 
 varying float img_valid; // 0 when this vertex has no such image: its triangles are discarded
 
@@ -194,6 +195,9 @@ void vertex() {
 void fragment() {
 	if (img_valid < 0.999) {
 		discard;
+	}
+	if (min_view_distance > 0.0 && !cpu_mode && length(VERTEX) < min_view_distance) {
+		discard; // VERTEX is the view-space position here
 	}
 	ALBEDO = albedo.rgb;
 	ROUGHNESS = 0.6;

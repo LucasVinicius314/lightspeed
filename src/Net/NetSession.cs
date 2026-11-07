@@ -613,8 +613,10 @@ public partial class NetSession : Node
         pose = default;
         if (GetViewport()?.GetCamera3D() is not { } camera)
             return false;
-        byte mode = camera is FreeCamera free ? (byte)free.Mode : (byte)0;
-        pose = new PoseState(mode, camera.GlobalPosition, camera.GlobalBasis.GetRotationQuaternion());
+        if (camera is FreeCamera free)
+            pose = new PoseState((byte)free.Mode, free.PlayerPosition, free.PlayerRotation); // the player, not the third-person camera
+        else
+            pose = new PoseState(0, camera.GlobalPosition, camera.GlobalBasis.GetRotationQuaternion());
         return true;
     }
 

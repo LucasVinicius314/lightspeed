@@ -24,6 +24,9 @@ public partial class DelayedVisual : MeshInstance3D
     [Export] public Color Albedo { get; set; } = Colors.White;
     [Export] public bool LogDelay { get; set; }
 
+    /// <summary>Fragments closer than this to the camera are not drawn (0 = off). The player's own model uses it so you never see the inside of your own head.</summary>
+    [Export] public float MinViewDistance { get; set; }
+
     /// <summary>
     /// Shader solve, or the CPU reference (see <see cref="GameSettings.CpuSolver"/>). Mesh edge length and the
     /// Light Echoes options also come from <see cref="GameSettings"/>.
@@ -54,6 +57,7 @@ public partial class DelayedVisual : MeshInstance3D
     private Shape? _shape;
     private bool _suppressed;
     private readonly List<RayInterval> _intervals = new();
+    private readonly PresentSamples _present = new(); // the track plus the virtual present sample (see PresentSamples)
     private readonly Vector4[] _intervalSpheres = new Vector4[RetardedRay.MaxIntervals];
     private readonly Vector2[] _intervalRanges = new Vector2[RetardedRay.MaxIntervals];
 
@@ -84,6 +88,7 @@ public partial class DelayedVisual : MeshInstance3D
         _material = new ShaderMaterial { Shader = GD.Load<Shader>("res://shaders/delayed_visual.gdshader") };
         _material.SetShaderParameter("object_index", Track?.Row ?? 0);
         _material.SetShaderParameter("albedo", Albedo);
+        _material.SetShaderParameter("min_view_distance", MinViewDistance);
         MaterialOverride = _material;
 
         ApplyMode();
@@ -170,8 +175,10 @@ public partial class DelayedVisual : MeshInstance3D
         float linear = track.PeakLinearSpeed * 1.05f + 0.01f;
         float angular = track.PeakAngularSpeed * 1.05f + 0.001f;
         float c = SimClock.Instance.C;
-        RetardedRay.Intervals(track, SimClock.TickDelta, batch.CameraPosition, c, HistoryTexture.AgeOf(track), _radius,
-            linear, into: _intervals);
+        _present.Inner = track;
+        double age = HistoryTexture.AgeOf(track);
+        RetardedRay.Intervals(_present, SimClock.TickDelta, batch.CameraPosition, c, _present.EffectiveAge(age, SimClock.TickDelta),
+            _radius, linear, into: _intervals);
 
         // The solver counts samples within this track; the texture counts them within the shared window.
         double offset = (HistoryTexture.Instance.SampleCount - 1)
@@ -213,6 +220,7 @@ public partial class DelayedVisual : MeshInstance3D
         row[14] = rect.Z;
         row[15] = rect.W;
         row[16] = angular;
+        row[17] = MinViewDistance;
         for (int i = 0; i < count; i++)
         {
             var sph = _intervalSpheres[i];
@@ -320,8 +328,10 @@ public partial class DelayedVisual : MeshInstance3D
             return;
 
         var camPos = camera.GlobalPosition;
-        var pose = RetardedSolver.Solve(Track, SimClock.TickDelta, camPos.ToNumerics(), SimClock.Instance.C,
-            System.Numerics.Vector3.Zero, HistoryTexture.AgeOf(Track));
+        _present.Inner = Track;
+        double age = HistoryTexture.AgeOf(Track);
+        var pose = RetardedSolver.Solve(_present, SimClock.TickDelta, camPos.ToNumerics(), SimClock.Instance.C,
+            System.Numerics.Vector3.Zero, _present.EffectiveAge(age, SimClock.TickDelta));
         Visible = pose.Status == SolveStatus.Ok;
         if (!Visible)
             return;

@@ -24,7 +24,7 @@ render_mode blend_mix, depth_draw_always, cull_disabled;
 //   1: shape size (box half extents | sphere radius in x | cylinder radius, half height), bound on the origin's speed
 //   2: albedo (linear)
 //   3: screen rectangle in NDC: min xy, max xy
-//   4: bound on the spin in x
+//   4: bound on the spin in x, minimum view distance in y
 //   5..20: interval spheres: centre xyz, radius
 //   21..28: interval sample ranges, two per texel: (newest, oldest) of interval 2j, then of 2j+1
 uniform sampler2D ray_data : filter_nearest;
@@ -33,6 +33,7 @@ varying flat int v_slot;
 
 const int MAX_MARCH = 512; // RetardedRay.MaxMarchIterations
 const float SURFACE_EPS = 0.005; // RetardedRay.SurfaceEpsilon
+const float MIN_RAY_STEP = 0.03; // RetardedRay.MinRayStep, metres
 
 struct Part {
 	int obj; // row in the history textures
@@ -41,6 +42,7 @@ struct Part {
 	float lin; // upper bound on the origin's speed, m/s
 	float ang; // upper bound on the spin, rad/s
 	float radius; // origin to farthest point of the shape
+	float min_view; // hits closer than this to the camera are discarded (the player's own model)
 };
 
 float sdf(Part p, vec3 q) {
@@ -68,8 +70,8 @@ vec3 sdf_normal(Part p, vec3 q) {
 float h_at(Part part, float kf, vec3 cam, vec3 dir, out vec3 local, out vec4 q,
 		inout int ci, inout vec3 cp0, inout vec3 cp1, inout vec4 cq0, inout vec4 cq1, inout float cflag) {
 	int n = lc_count;
-	kf = clamp(kf, 0.0, float(n - 1));
-	int i = min(int(floor(kf)), n - 2);
+	kf = clamp(kf, 0.0, float(n)); // index n is the virtual present sample (see fetch_o)
+	int i = min(int(floor(kf)), n - 1);
 	float a = kf - float(i);
 	if (i != ci) {
 		vec4 s0 = fetch_o(part.obj, i, 0);
@@ -114,7 +116,7 @@ bool march(Part part, float k_start, float k_min, vec3 cam, vec3 dir, out float 
 			break;
 		}
 		float speed = lc_c + part.lin + part.ang * (max(dist, 0.0) + part.radius);
-		float step = max(dist / (speed * DT), 0.1);
+		float step = max(dist / (speed * DT), min(0.1, MIN_RAY_STEP / (lc_c * DT)));
 		float next = max(k_min, k - step);
 		float next_dist = h_at(part, next, cam, dir, local, q, ci, cp0, cp1, cq0, cq1, cflag);
 		if (next_dist <= SURFACE_EPS) {
@@ -163,7 +165,9 @@ void fragment() {
 	part.radius = t0.z;
 	part.size = t1.xyz;
 	part.lin = t1.w;
-	part.ang = texelFetch(ray_data, ivec2(4, slot), 0).x;
+	vec4 t4 = texelFetch(ray_data, ivec2(4, slot), 0);
+	part.ang = t4.x;
+	part.min_view = t4.y;
 	int iv_count = int(t0.w + 0.5);
 
 	int first;
@@ -216,6 +220,9 @@ void fragment() {
 	}
 
 	vec3 point = cam + dir * (lc_c * ((newest - k_hit) * DT + lc_age));
+	if (part.min_view > 0.0 && distance(point, cam) < part.min_view) {
+		discard;
+	}
 	vec3 normal_world = rotate(q, sdf_normal(part, local));
 
 	ALBEDO = texelFetch(ray_data, ivec2(2, slot), 0).rgb;

@@ -39,7 +39,7 @@ public partial class FreeCamera : Camera3D
     private const float KeyThrottleDown = 0.0f;   // while S is held; with neither the throttle is zero
     private const float DroneDrag = 0.12f;        // linear, 1/s
     private const float DroneDragQuadratic = 0.010f; // per metre
-    private const float CameraTilt = 0.436f;      // FPV cameras are tilted up (25 degrees) so forward flight looks level
+    public const float CameraTilt = 0.436f;       // FPV cameras are tilted up (25 degrees) so forward flight looks level
     private const float DroneRadius = 0.2f;
     private const float DroneMass = 0.6f;         // kg, for the impulse it gives rigid bodies it hits
     private const float DroneBounce = 0.25f;      // fraction of the speed into a surface that comes back
@@ -56,6 +56,14 @@ public partial class FreeCamera : Camera3D
 
     /// <summary>Velocity in m/s, for the HUD.</summary>
     public Vector3 Velocity => Mode == CameraMode.Walk && _walker != null ? _walker.Velocity : _velocity;
+
+    /// <summary>
+    /// Where the player is and which way they face: the camera's own pose in first person, and the point the third-person
+    /// camera looks at otherwise. Networking, throwing and the player's model use this, never the camera's pose.
+    /// </summary>
+    public Vector3 PlayerPosition { get; private set; }
+    public Basis PlayerBasis { get; private set; } = Basis.Identity;
+    public Quaternion PlayerRotation => PlayerBasis.GetRotationQuaternion();
 
     /// <summary>Drone throttle, 0 to 1.</summary>
     public float Throttle => _throttle;
@@ -79,6 +87,8 @@ public partial class FreeCamera : Camera3D
     private CollisionShape3D? _walkerShape;
     private CharacterBody3D? _droneBody;          // the drone is a small sphere that collides with everything
     private CollisionShape3D? _droneShape;
+    private bool _offsetForThirdPerson; // the camera currently sits behind the player
+    private LocalAvatar? _avatar;
     private Vector3 _walkPrev;
     private Vector3 _walkCur;
     private readonly float _gravity = (float)ProjectSettings.GetSetting("physics/3d/default_gravity", 9.8);
@@ -114,8 +124,14 @@ public partial class FreeCamera : Camera3D
         _droneBody.AddChild(_droneShape);
         GetParent().CallDeferred(Node.MethodName.AddChild, _droneBody);
 
+        // The player's own model, drawn through the light delay like everything else.
+        _avatar = new LocalAvatar(this) { MinViewDistance = LocalAvatar.MinDistance, WithGhosts = false };
+        GetParent().CallDeferred(Node.MethodName.AddChild, _avatar);
+
         GameSettings.Changed += OnSettingsChanged;
         EnterMode(GameSettings.CameraMode);
+        PlayerPosition = GlobalPosition;
+        PlayerBasis = GlobalBasis;
     }
 
     public override void _ExitTree() => GameSettings.Changed -= OnSettingsChanged;
@@ -184,6 +200,10 @@ public partial class FreeCamera : Camera3D
                 break;
             case InputEventKey { Pressed: true, Keycode: Key.Escape }:
                 Input.MouseMode = Input.MouseModeEnum.Visible;
+                break;
+            case InputEventKey { Pressed: true, Echo: false, Keycode: Key.T }:
+                GameSettings.ThirdPerson = !GameSettings.ThirdPerson;
+                GameSettings.Commit();
                 break;
             case InputEventKey { Pressed: true, Echo: false, Keycode: Key.V }:
                 GameSettings.CameraMode = (CameraMode)(((int)GameSettings.CameraMode + 1) % 3);
@@ -258,6 +278,10 @@ public partial class FreeCamera : Camera3D
         float dt = (float)Mathf.Min(now - _lastFrame, 0.1);
         _lastFrame = now;
 
+        // Movement works on the player's own eye pose; the third-person camera is only an offset from it, so put it back first.
+        if (_offsetForThirdPerson)
+            GlobalPosition = PlayerPosition;
+
         switch (Mode)
         {
             case CameraMode.Walk:
@@ -270,6 +294,30 @@ public partial class FreeCamera : Camera3D
                 ProcessFly(dt);
                 break;
         }
+
+        PlayerPosition = GlobalPosition;
+        PlayerBasis = GlobalBasis;
+        _offsetForThirdPerson = GameSettings.ThirdPerson;
+        if (_offsetForThirdPerson)
+            PlaceBehindPlayer();
+    }
+
+    /// <summary>Third person: the camera goes behind the player, along the way they look, shortened if a wall is in the way.</summary>
+    private void PlaceBehindPlayer()
+    {
+        // A drone rolls and tumbles; the chase camera keeps the horizon level and only follows where it looks.
+        var view = Mode == CameraMode.Drone ? Basis.LookingAt(-PlayerBasis.Z, Vector3.Up) : PlayerBasis;
+        var wanted = PlayerPosition + view.Z * GameSettings.ThirdPersonDistance + view.Y * 0.3f;
+
+        var excluded = new Godot.Collections.Array<Rid>();
+        if (_walker != null) excluded.Add(_walker.GetRid());
+        if (_droneBody != null) excluded.Add(_droneBody.GetRid());
+        var query = PhysicsRayQueryParameters3D.Create(PlayerPosition, wanted, 1, excluded);
+        var hit = GetWorld3D().DirectSpaceState.IntersectRay(query);
+        if (hit.Count > 0)
+            wanted = (Vector3)hit["position"] + (Vector3)hit["normal"] * 0.2f;
+
+        GlobalTransform = new Transform3D(view, wanted);
     }
 
     /// <summary>X right, Y up (jump counts as +1), Z back; zero while the menu is open.</summary>

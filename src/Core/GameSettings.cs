@@ -40,6 +40,7 @@ public static class GameSettings
     public const float DefaultFov = 85f;
     public const float DefaultMouseSensitivity = 0.0018f;
     public const float DefaultFlySpeed = 4f;
+    public const float DefaultThirdPersonDistance = 3f;
     public const float DefaultMaxEdgeLength = 0.2f;
     public const int DefaultMaxImages = 8;
     public const float DefaultHistorySeconds = 30f;
@@ -72,6 +73,12 @@ public static class GameSettings
     public static float MouseSensitivity { get; set; }
     public static float FlySpeed { get; set; }
     public static bool LimitToC { get; set; }
+
+    /// <summary>Watch the player from behind instead of through their eyes (T). Works in every mode.</summary>
+    public static bool ThirdPerson { get; set; }
+
+    /// <summary>How far behind the player the third-person camera sits, in metres.</summary>
+    public static float ThirdPersonDistance { get; set; }
 
     /// <summary>Current movement mode. Not saved: every run starts flying (`-- --mode=drone|walk` overrides).</summary>
     public static CameraMode CameraMode { get; set; }
@@ -114,6 +121,8 @@ public static class GameSettings
                 FastParts = FastPartRendering.Echoes;
             else if (arg == "--rays")
                 FastParts = FastPartRendering.Rays;
+            else if (arg == "--third-person")
+                ThirdPerson = true;
             else if (arg == "--rays-always")
                 FastParts = FastPartRendering.RaysAlways;
             else if (arg.StartsWith("--mode=") && Enum.TryParse<CameraMode>(arg["--mode=".Length..], true, out var mode))
@@ -154,6 +163,8 @@ public static class GameSettings
         MouseSensitivity = DefaultMouseSensitivity;
         FlySpeed = DefaultFlySpeed;
         LimitToC = false;
+        ThirdPerson = false;
+        ThirdPersonDistance = DefaultThirdPersonDistance;
         CameraMode = CameraMode.Fly;
         DroneCrt = true;
         DroneInvertPitch = false;
@@ -176,6 +187,8 @@ public static class GameSettings
         MouseSensitivity = (float)(double)config.GetValue("camera", "sensitivity", MouseSensitivity);
         FlySpeed = (float)(double)config.GetValue("camera", "speed", FlySpeed);
         LimitToC = (bool)config.GetValue("camera", "limit_to_c", LimitToC);
+        ThirdPerson = (bool)config.GetValue("camera", "third_person", ThirdPerson);
+        ThirdPersonDistance = (float)(double)config.GetValue("camera", "third_person_distance", ThirdPersonDistance);
         DroneCrt = (bool)config.GetValue("camera", "drone_crt", DroneCrt);
         DroneInvertPitch = (bool)config.GetValue("camera", "drone_invert_pitch", DroneInvertPitch);
         NetServerUrl = (string)config.GetValue("net", "server_url", NetServerUrl);
@@ -198,6 +211,8 @@ public static class GameSettings
         config.SetValue("camera", "sensitivity", (double)MouseSensitivity);
         config.SetValue("camera", "speed", (double)FlySpeed);
         config.SetValue("camera", "limit_to_c", LimitToC);
+        config.SetValue("camera", "third_person", ThirdPerson);
+        config.SetValue("camera", "third_person_distance", (double)ThirdPersonDistance);
         config.SetValue("camera", "drone_crt", DroneCrt);
         config.SetValue("camera", "drone_invert_pitch", DroneInvertPitch);
         config.SetValue("net", "server_url", NetServerUrl);

@@ -267,6 +267,14 @@ public partial class SettingsMenu : CanvasLayer
             v => { GameSettings.FlySpeed = (float)v; GameSettings.Commit(); },
             v => $"{v:0.0} m/s",
             "Fly speed; walking is half of it (sprint is a bit faster). The FPV drone is thrust-driven and ignores it.");
+        Toggle("Third-person view",
+            () => GameSettings.ThirdPerson,
+            v => { GameSettings.ThirdPerson = v; GameSettings.Commit(); },
+            "Watch yourself from behind, in every mode (T). Your model is seen through the same light delay as everything else.");
+        Slider("Third-person distance", 1, 12, 0.5,
+            () => GameSettings.ThirdPersonDistance,
+            v => { GameSettings.ThirdPersonDistance = (float)v; GameSettings.Commit(); },
+            v => $"{v:0.0} m");
         Toggle("Keep camera below c",
             () => GameSettings.LimitToC,
             v => { GameSettings.LimitToC = v; GameSettings.Commit(); },

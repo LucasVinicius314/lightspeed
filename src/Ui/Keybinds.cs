@@ -22,6 +22,7 @@ public static class Keybinds
         new("Moving (all modes)", new Bind[]
         {
             new("V", "Cycle mode: Fly, Drone, Walk"),
+            new("T", "Third-person view (watch yourself from behind)"),
             new("W  A  S  D", "Fly and Walk: move"),
             new("Mouse", "Fly and Walk: look"),
             new("Shift", "Fly and Walk: sprint"),

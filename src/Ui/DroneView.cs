@@ -68,7 +68,7 @@ public partial class DroneView : CanvasLayer
 
     private void UpdateVisible()
     {
-        bool on = GameSettings.CameraMode == CameraMode.Drone && GameSettings.DroneCrt;
+        bool on = GameSettings.CameraMode == CameraMode.Drone && GameSettings.DroneCrt && !GameSettings.ThirdPerson; // the feed is the drone's own view
         _osd.Visible = on;
         _crtLayer.Visible = on;
         SetProcess(on);

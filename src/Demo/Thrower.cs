@@ -89,8 +89,9 @@ public partial class Thrower : Node3D
         var camera = GetViewport().GetCamera3D();
         if (camera == null || Scenes.Count == 0)
             return;
-        var forward = -camera.GlobalBasis.Z;
-        var origin = camera.GlobalPosition + forward * 1.2f;
+        var basis = camera is Player.FreeCamera free ? free.PlayerBasis : camera.GlobalBasis; // not the third-person camera
+        var forward = -basis.Z;
+        var origin = (camera is Player.FreeCamera f2 ? f2.PlayerPosition : camera.GlobalPosition) + forward * 1.2f;
         if (NetSession.IsClient)
         {
             NetSession.Instance.RequestThrow(SelectedIndex, origin, forward); // the host owns the physics

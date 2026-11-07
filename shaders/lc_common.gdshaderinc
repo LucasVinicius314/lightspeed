@@ -16,10 +16,40 @@ const int CHUNK = 16; // time slots per layer; HistoryTexture.Chunk
 const int TICK_WRAP = 1048576; // HistoryTexture.TickWrap
 
 // Texel `part` (0: position + teleport flag, 1: rotation) of logical sample k (0 = oldest in the window).
-vec4 fetch_o(int obj, int k, int part) {
+vec4 nlerp(vec4 a, vec4 b, float t) {
+	if (dot(a, b) < 0.0) {
+		b = -b;
+	}
+	return normalize(mix(a, b, t));
+}
+
+vec4 fetch_real(int obj, int k, int part) {
 	int cap = textureSize(lc_history, 0).z * CHUNK;
 	int s = (lc_head - (lc_count - 1) + k + cap) % cap;
 	return texelFetch(lc_history, ivec3((s % CHUNK) * 2 + part, obj, s / CHUNK), 0);
+}
+
+// Texel `part` of sample k of object `obj`. Index lc_count is a virtual sample: the pose one tick after the newest,
+// extrapolated from the last two (PresentSamples on the CPU). The retarded moment of a close part (or of any part at a
+// high speed of light) falls after the newest real sample, in the fraction of a tick since; the delay formula
+// (lc_count - 1 - k) DT + lc_age gives the right, negative, delay for the virtual sample, so nothing else changes.
+// Only parts with at least two samples have one (see lifetime_o). A teleport at the newest sample holds still.
+vec4 fetch_o(int obj, int k, int part) {
+	if (k < lc_count) {
+		return fetch_real(obj, k, part);
+	}
+	vec4 newest = fetch_real(obj, lc_count - 1, 0);
+	if (part == 0) {
+		if (newest.w > 0.5) {
+			return vec4(newest.xyz, 0.0);
+		}
+		return vec4(2.0 * newest.xyz - fetch_real(obj, lc_count - 2, 0).xyz, 0.0);
+	}
+	vec4 q1 = fetch_real(obj, lc_count - 1, 1);
+	if (newest.w > 0.5) {
+		return q1;
+	}
+	return nlerp(fetch_real(obj, lc_count - 2, 1), q1, 2.0);
 }
 
 vec4 fetch(int k, int part) {
@@ -39,13 +69,6 @@ vec3 rotate(vec4 q, vec3 v) {
 	return v + q.w * t + cross(q.xyz, t);
 }
 
-vec4 nlerp(vec4 a, vec4 b, float t) {
-	if (dot(a, b) < 0.0) {
-		b = -b;
-	}
-	return normalize(mix(a, b, t));
-}
-
 void pose(int lo, float a, out vec3 p, out vec4 q) {
 	p = mix(sample_pos(lo), sample_pos(lo + 1), a);
 	q = nlerp(sample_rot(lo), sample_rot(lo + 1), a);
@@ -57,7 +80,8 @@ void lifetime_o(int obj, out int first, out int last, out bool alive, out bool h
 	int n = lc_count;
 	alive = meta.y < 0.0;
 	first = max(0, n - 1 - (lc_tick - int(meta.x) + TICK_WRAP) % TICK_WRAP);
-	last = alive ? n - 1 : n - 1 - (lc_tick - int(meta.y) + TICK_WRAP) % TICK_WRAP;
+	// An alive part with two or more samples also has the virtual present sample at index n.
+	last = alive ? (first <= n - 2 ? n : n - 1) : n - 1 - (lc_tick - int(meta.y) + TICK_WRAP) % TICK_WRAP;
 	have = n > 1 && meta.z > 0.5 && last >= first;
 }
 

@@ -19,6 +19,7 @@
 [ext_resource type="PackedScene" path="res://scenes/objects/physics_cylinder.tscn" id="18"]
 [ext_resource type="Script" path="res://src/Ui/DroneView.cs" id="19"]
 [ext_resource type="Material" path="res://assets/materials/bricks075a/bricks.tres" id="20"]
+[ext_resource type="Script" path="res://src/Demo/Structures.cs" id="21"]
 
 [sub_resource type="Environment" id="2"]
 background_mode = 1
@@ -27,10 +28,10 @@ ambient_light_source = 2
 ambient_light_color = Color(0.5, 0.5, 0.55, 1)
 
 [sub_resource type="BoxMesh" id="1"]
-size = Vector3(50, 0.2, 50)
+size = Vector3(300, 0.2, 300)
 
 [sub_resource type="BoxShape3D" id="GroundShape_1"]
-size = Vector3(50, 0.2, 50)
+size = Vector3(300, 0.2, 300)
 
 [node name="Main" type="Node3D" unique_id=1853163452]
 script = ExtResource("1")
@@ -49,6 +50,9 @@ surface_material_override/0 = ExtResource("20")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Ground" unique_id=728786057]
 shape = SubResource("GroundShape_1")
+
+[node name="Structures" type="Node3D" parent="."]
+script = ExtResource("21")
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=2089249265]
 transform = Transform3D(1, 0, 0, 0, 0.9063, 0.4226, 0, -0.4226, 0.9063, 0, 6, 12)

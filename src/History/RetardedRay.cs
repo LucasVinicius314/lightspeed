@@ -72,6 +72,9 @@ public static class RetardedRay
     /// <summary>Close enough to the surface to call it a hit (5 mm). Matches SURFACE_EPS in the shader.</summary>
     public const float SurfaceEpsilon = 0.005f;
 
+    /// <summary>Shortest ray step in metres (the shader's MIN_RAY_STEP).</summary>
+    public const double MinRayStep = 0.03;
+
     /// <param name="linearBound">Upper bound on the shape origin's speed (m/s).</param>
     /// <param name="angularBound">Upper bound on its spin (rad/s).</param>
     /// <param name="objectRadius">Distance from the origin to the shape's farthest point.</param>
@@ -112,7 +115,12 @@ public static class RetardedRay
             return new RayHit(true, point, normal, (n - 1 - kf) * dt + age);
         }
 
-        double k = n - 1;
+        // Start where the delay is zero (the camera itself). With the virtual present sample (negative age) that is
+        // before the last sample; otherwise it is the last sample.
+        double k = Math.Min(n - 1.0, n - 1.0 + age / dt);
+        // Never advance less than about 3 cm of ray (0.1 sample up to c = 18 m/s): a fixed fraction of a sample would be metres of
+        // ray at a high speed of light, wide enough to step over a whole part.
+        double minStep = Math.Min(0.1, MinRayStep / (c * dt));
         float dist = Eval(k, out _, out _);
         if (dist <= 0f)
             return HitAt(k);
@@ -120,7 +128,7 @@ public static class RetardedRay
         for (int it = 0; it < maxIterations && k > 0; it++)
         {
             double speed = c + linearBound + angularBound * (Math.Max(dist, 0f) + objectRadius);
-            double step = Math.Max(dist / (speed * dt), 0.1);
+            double step = Math.Max(dist / (speed * dt), minStep);
             double next = Math.Max(0.0, k - step);
             float nextDist = Eval(next, out _, out _);
 
@@ -150,9 +158,12 @@ public static class RetardedRay
     /// <paramref name="objectRadius"/> of the origin can only be seen at a moment when the origin's own distance
     /// to the camera is within that radius of c times the delay (triangle inequality), so everywhere else the
     /// part is invisible and a ray need not march there. The origin's f changes by at most c plus its speed
-    /// per second, so the scan skips ahead where |f| is far from that band and cannot miss one.
+    /// per second, so the scan skips ahead where |f| is far from that band and cannot miss one. Between two
+    /// neighbouring samples f can cross the band without either sample being inside it (light covers
+    /// c / 60 per tick, which at a high speed of light is more than the part is wide), so each segment is tested,
+    /// not each sample.
     /// Ordered newest first; when there are more than <paramref name="maxIntervals"/>, the last one is stretched
-    /// to cover everything older, which is conservative.
+    /// to cover everything older, which is conservative. <paramref name="into"/> is a list to reuse (it is cleared).
     /// </summary>
     public static List<RayInterval> Intervals(
         ISampleSource h, double dt, Vector3 camera, float c, double age, double objectRadius, double linearBound,
@@ -169,22 +180,28 @@ public static class RetardedRay
 
         double F(int k) => Vector3.Distance(camera, h[k].Position) - c * ((n - 1 - k) * dt + age);
 
-        int activeFrom = -1; // newest index of the interval being built, or -1
+        int activeFrom = -1; // newest sample of the stretch being built, or -1
         int k = n - 1;
-        while (k >= 0)
+        double fk = F(k);
+        while (k > 0)
         {
-            double excess = Math.Abs(F(k)) - slack;
-            if (excess <= 0)
+            double excess = Math.Abs(fk) - slack;
+            int step = excess > 0 ? (int)Math.Max(1, Math.Floor(excess / perSample)) : 1; // safe: |f| cannot reach the band sooner
+            int next = Math.Max(0, k - step);
+            double fNext = F(next);
+
+            // Does f meet the band somewhere between the two samples? Between neighbours f can move by up to a tick of
+            // light travel on either side of what the nearer sample says; a longer skip was proved to stay outside.
+            double margin = step == 1 ? perSample * 0.5 : 0;
+            bool meets = Math.Min(fk, fNext) - margin <= slack && Math.Max(fk, fNext) + margin >= -slack;
+            if (meets)
             {
                 if (activeFrom < 0)
                     activeFrom = k;
-                k--;
-                continue;
             }
-
-            if (activeFrom >= 0)
+            else if (activeFrom >= 0)
             {
-                result.Add(MakeInterval(h, activeFrom, k + 1));
+                result.Add(MakeInterval(h, activeFrom, k));
                 activeFrom = -1;
                 if (result.Count == maxIntervals - 1)
                 {
@@ -193,7 +210,8 @@ public static class RetardedRay
                     return result;
                 }
             }
-            k -= (int)Math.Max(1, Math.Floor(excess / perSample)); // safe: |f| cannot reach the band sooner
+            k = next;
+            fk = fNext;
         }
         if (activeFrom >= 0)
             result.Add(MakeInterval(h, activeFrom, 0));
