@@ -7,6 +7,7 @@ using Lightspeed.Debug;
 using Lightspeed.Demo;
 using Lightspeed.History;
 using Lightspeed.Net;
+using P2PSignaling;
 using Lightspeed.Player;
 
 namespace Lightspeed.Ui;
@@ -54,6 +55,15 @@ public partial class SettingsMenu : CanvasLayer
                 for (int i = 0; i < _tabs.GetTabCount(); i++)
                     if (string.Equals(_tabs.GetChild(i).Name, wanted, StringComparison.OrdinalIgnoreCase))
                         _tabs.CurrentTab = i;
+            }
+            else if (arg.StartsWith("--menu-scroll=")) // for screenshots: scroll the tab down by this many pixels, a moment after start
+            {
+                int pixels = int.Parse(arg["--menu-scroll=".Length..], System.Globalization.CultureInfo.InvariantCulture);
+                GetTree().CreateTimer(3, processAlways: true).Timeout += () =>
+                {
+                    if (_tabs.GetCurrentTabControl() is ScrollContainer scroll)
+                        scroll.ScrollVertical = pixels;
+                };
             }
             else if (arg == "--open-menu") // for screenshots
             {
@@ -324,6 +334,8 @@ public partial class SettingsMenu : CanvasLayer
         joinRow.AddChild(join);
         _box.AddChild(joinRow);
 
+        BuildFriends(net);
+
         SubSection("Players");
         var roster = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         roster.AddThemeConstantOverride("separation", 4);
@@ -359,6 +371,119 @@ public partial class SettingsMenu : CanvasLayer
             rosterKey = key;
             BuildRoster(roster, players);
         });
+    }
+
+    /// <summary>Your id to give to friends, the friends file, and the rooms your friends are hosting right now.</summary>
+    private void BuildFriends(NetSession net)
+    {
+        SubSection("Friends");
+
+        var idRow = new HBoxContainer();
+        var idLabel = new Label
+        {
+            ClipText = true,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(60, 0),
+            TooltipText = "Your id. Anyone who has it in their friends file can see the rooms you host.",
+        };
+        idLabel.AddThemeFontSizeOverride("font_size", 16);
+        idLabel.AddThemeColorOverride("font_color", UiTheme.Accent);
+        idRow.AddChild(idLabel);
+        var copy = new Button { Text = "Copy my id", FocusMode = Control.FocusModeEnum.None };
+        copy.Pressed += () => DisplayServer.ClipboardSet(P2PIdentity.OwnId);
+        idRow.AddChild(copy);
+        _box.AddChild(idRow);
+
+        var hint = new Label
+        {
+            Text = "Give your id to friends. Put theirs, one per line, in your friends file, and you will see the rooms they " +
+                   "host here. The id is shared by every game that uses this service; only friends should have it.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(60, 0),
+        };
+        hint.AddThemeColorOverride("font_color", UiTheme.Dim);
+        hint.AddThemeFontSizeOverride("font_size", 12);
+        _box.AddChild(hint);
+
+        Toggle("List my room to friends", () => GameSettings.ListForFriends,
+            v => { GameSettings.ListForFriends = v; GameSettings.Commit(); },
+            "When you host, friends who have your id see your room and its code without being sent it. Applies to the next room you host.");
+
+        var buttons = new HBoxContainer();
+        var refresh = new Button { Text = "Refresh friend rooms", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, FocusMode = Control.FocusModeEnum.None };
+        refresh.Pressed += net.RefreshFriendRooms;
+        var openFile = new Button { Text = "Open friends folder", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, FocusMode = Control.FocusModeEnum.None };
+        openFile.Pressed += () =>
+        {
+            P2PIdentity.LoadFriends(); // makes the folder and an explained friends file if they are not there yet
+            OS.ShellOpen(P2PIdentity.HomeFolder);
+        };
+        buttons.AddChild(refresh);
+        buttons.AddChild(openFile);
+        _box.AddChild(buttons);
+
+        var status = new Label
+        {
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(60, 0),
+        };
+        status.AddThemeColorOverride("font_color", UiTheme.Dim);
+        _box.AddChild(status);
+
+        var rooms = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        rooms.AddThemeConstantOverride("separation", 4);
+        _box.AddChild(rooms);
+        string roomsKey = "\0";
+
+        _refresh.Add(() =>
+        {
+            if (!IsOpen)
+                return; // refreshes also run at startup; the id file is only created once the menu is really opened
+            idLabel.Text = P2PIdentity.OwnId;
+            if (P2PIdentity.OwnProblem is { } problem)
+                idLabel.TooltipText = problem;
+            bool offline = net.State == NetSession.Role.Offline;
+            refresh.Disabled = net.RefreshingFriends;
+            string text = net.FriendStatus;
+            if (!P2PIdentity.IsPersistent)
+                text += (text.Length > 0 ? "\n" : "") + "Your id could not be saved, so it only lasts until you close the game.";
+            foreach (var line in net.FriendProblems)
+                text += "\n" + line;
+            status.Text = text;
+            status.Visible = text.Length > 0;
+
+            string key = offline + "|" + string.Join("|", net.FriendRooms.Select(r => $"{r.Code}:{r.Players}"));
+            if (key == roomsKey)
+                return;
+            roomsKey = key;
+            BuildFriendRooms(rooms, net, offline);
+        });
+    }
+
+    private static void BuildFriendRooms(VBoxContainer list, NetSession net, bool offline)
+    {
+        foreach (var child in list.GetChildren())
+            child.QueueFree();
+        foreach (var room in net.FriendRooms)
+        {
+            var row = new PanelContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+            row.AddThemeStyleboxOverride("panel", UiTheme.Box(UiTheme.Control, 6, 10, 5, new Color(1, 1, 1, 0.10f)));
+            var line = new HBoxContainer();
+            row.AddChild(line);
+
+            string who = room.FriendLabel.Length > 0 ? room.FriendLabel : room.HostName.Length > 0 ? room.HostName : "A friend";
+            string detail = room.FriendLabel.Length > 0 && room.HostName.Length > 0 ? $"  ({room.HostName})" : "";
+            line.AddChild(RosterCell(who + detail, RosterNameWidth, HorizontalAlignment.Left, Colors.White, 14, expand: true));
+            line.AddChild(RosterCell($"{room.Players}/{room.MaxPlayers}", 48, HorizontalAlignment.Right, UiTheme.Dim, 13));
+
+            string code = room.Code;
+            var join = new Button { Text = "Join", Disabled = !offline, FocusMode = Control.FocusModeEnum.None };
+            join.Pressed += () => net.Join(code);
+            line.AddChild(join);
+            list.AddChild(row);
+        }
     }
 
     private const int RosterNameWidth = 150;

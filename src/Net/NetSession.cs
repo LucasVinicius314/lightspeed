@@ -128,6 +128,9 @@ public partial class NetSession : Node
     }
 
     private P2PLobby? _lobby;
+    private P2PLobby? _browser;          // a short-lived signaling connection that only asks for the friends' rooms
+    private bool _autoJoinFriend;        // dev: poll the friends list and join the first room (--net-join-friend)
+    private ulong _friendPollMsec;
     private bool _wantHost;
     private bool _welcomed;
     private bool _worldSynced;
@@ -173,6 +176,7 @@ public partial class NetSession : Node
         Multiplayer.ServerDisconnected += OnServerDisconnected;
 
         bool autoHost = false;
+        bool autoListFriends = false;
         string? autoJoin = null;
         foreach (var arg in OS.GetCmdlineUserArgs())
         {
@@ -184,6 +188,10 @@ public partial class NetSession : Node
                 _reportAtTick = long.Parse(arg["--net-report-at=".Length..], CultureInfo.InvariantCulture);
             else if (arg.StartsWith("--net-quit-at="))
                 _quitAtTick = long.Parse(arg["--net-quit-at=".Length..], CultureInfo.InvariantCulture);
+            else if (arg == "--net-join-friend")
+                _autoJoinFriend = true;
+            else if (arg == "--net-list-friends")
+                autoListFriends = true;
             else if (arg == "--net-report-paused")
                 _reportWhenPaused = true;
             else if (arg.StartsWith("--net-throw="))
@@ -199,6 +207,8 @@ public partial class NetSession : Node
                 if (GetViewport().GetCamera3D() is FreeCamera free)
                     free.Place(new Vector3(cam[0], cam[1], cam[2]), cam[3], cam[4]);
             }).CallDeferred();
+        if (autoListFriends)
+            Callable.From(RefreshFriendRooms).CallDeferred();
         if (autoHost)
             Callable.From(Host).CallDeferred();
         else if (autoJoin != null)
@@ -231,11 +241,13 @@ public partial class NetSession : Node
         _wantHost = host;
         _welcomed = false;
         _worldSynced = false;
-        _lobby = new P2PLobby(url, BucketId, GameVersion()) { PlayerName = LocalName() };
+        _lobby = new P2PLobby(url, BucketId, GameVersion()) { PlayerName = LocalName(), ListForFriends = GameSettings.ListForFriends };
         AddChild(_lobby);
         _lobby.CodeReady += c =>
         {
             GD.Print($"NET CODE {c}");
+            if (GameSettings.ListForFriends)
+                GD.Print($"NET ID {P2PIdentity.OwnId}");
             SetStatus($"Hosting room {c}. Share the code.");
         };
         _lobby.PeerCreated += OnPeerCreated;
@@ -254,6 +266,79 @@ public partial class NetSession : Node
             _lobby.CreateRoom();
         else
             _lobby.JoinRoom(code!);
+    }
+
+    // ------------------------------------------------------------------ friends
+
+    /// <summary>The joinable rooms friends are hosting, as of the last <see cref="RefreshFriendRooms"/>.</summary>
+    public IReadOnlyList<FriendRoom> FriendRooms { get; private set; } = Array.Empty<FriendRoom>();
+
+    /// <summary>Bad lines the friends file had when it was last read.</summary>
+    public IReadOnlyList<string> FriendProblems { get; private set; } = Array.Empty<string>();
+
+    /// <summary>One line for the menu: what the last refresh found, or what went wrong.</summary>
+    public string FriendStatus { get; private set; } = "";
+
+    /// <summary>True while a refresh is waiting for the server.</summary>
+    public bool RefreshingFriends => _browser != null;
+
+    /// <summary>Raised when the friends' rooms, their status or the file's problems changed.</summary>
+    public event Action? FriendsChanged;
+
+    /// <summary>
+    /// Asks the server which of your friends (the ids in ~/.p2p-signaling-server/friends) are hosting right now. Uses a
+    /// short connection of its own, closed once the answer is in, so it works before you host or join anything.
+    /// </summary>
+    public void RefreshFriendRooms()
+    {
+        if (_browser != null)
+            return;
+        string url = GameSettings.NetServerUrl.Trim();
+        if (url.Length == 0)
+        {
+            SetFriendStatus("Enter the server address first.");
+            return;
+        }
+        var browser = new P2PLobby(url, BucketId, GameVersion()) { PlayerName = LocalName() };
+        _browser = browser;
+        AddChild(browser);
+        browser.FriendRoomsReceived += rooms =>
+        {
+            FriendProblems = browser.FriendFileProblems;
+            FriendRooms = rooms;
+            string problems = FriendProblems.Count > 0 ? $" ({FriendProblems.Count} bad line(s) in the friends file)" : "";
+            SetFriendStatus(rooms.Count == 0 ? $"No friends are hosting right now.{problems}"
+                : $"{rooms.Count} room(s) from friends.{problems}");
+            CloseBrowser();
+        };
+        browser.Failed += (code, message) =>
+        {
+            FriendRooms = Array.Empty<FriendRoom>();
+            SetFriendStatus(code == "bad_message"
+                ? "The server is older than the friends feature."
+                : $"Could not ask the server ({code}).");
+            CloseBrowser();
+        };
+        SetFriendStatus("Asking the server ...");
+        browser.ListFriendRooms();
+    }
+
+    private void CloseBrowser()
+    {
+        var browser = _browser;
+        _browser = null;
+        if (browser == null)
+            return;
+        browser.Leave();
+        browser.QueueFree();
+        FriendsChanged?.Invoke();
+    }
+
+    private void SetFriendStatus(string text)
+    {
+        FriendStatus = text;
+        GD.Print($"NET FRIENDS {text}");
+        FriendsChanged?.Invoke();
     }
 
     /// <summary>Leave the session and go back to a game of your own.</summary>
@@ -381,6 +466,19 @@ public partial class NetSession : Node
 
     public override void _Process(double delta)
     {
+        if (_autoJoinFriend && State == Role.Offline && Time.GetTicksMsec() - _friendPollMsec > 1000)
+        {
+            _friendPollMsec = Time.GetTicksMsec();
+            if (FriendRooms.Count > 0)
+            {
+                var room = FriendRooms[0];
+                GD.Print($"NET FRIEND ROOM code={room.Code} host={room.HostName} note={room.FriendLabel} players={room.Players}/{room.MaxPlayers}");
+                _autoJoinFriend = false;
+                Join(room.Code);
+            }
+            else
+                RefreshFriendRooms();
+        }
         if (_reportWhenPaused && State is Role.Host or Role.Client && SimClock.Instance.Paused)
         {
             _pausedSeconds += delta;

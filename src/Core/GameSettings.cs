@@ -87,6 +87,9 @@ public static class GameSettings
     /// <summary>The name other players see in the roster.</summary>
     public static string PlayerName { get; set; } = "Player";
 
+    /// <summary>Host: make the room visible to everyone who has this machine's id in their friends file (see P2PIdentity).</summary>
+    public static bool ListForFriends { get; set; } = true;
+
     public static bool Fxaa { get; set; }
     public static bool Vsync { get; set; }
     public static bool Fullscreen { get; set; }
@@ -177,6 +180,7 @@ public static class GameSettings
         DroneInvertPitch = (bool)config.GetValue("camera", "drone_invert_pitch", DroneInvertPitch);
         NetServerUrl = (string)config.GetValue("net", "server_url", NetServerUrl);
         PlayerName = (string)config.GetValue("net", "player_name", PlayerName);
+        ListForFriends = (bool)config.GetValue("net", "list_for_friends", ListForFriends);
         Fxaa = (bool)config.GetValue("display", "fxaa", Fxaa);
         Vsync = (bool)config.GetValue("display", "vsync", Vsync);
         Fullscreen = (bool)config.GetValue("display", "fullscreen", Fullscreen);
@@ -198,6 +202,7 @@ public static class GameSettings
         config.SetValue("camera", "drone_invert_pitch", DroneInvertPitch);
         config.SetValue("net", "server_url", NetServerUrl);
         config.SetValue("net", "player_name", PlayerName);
+        config.SetValue("net", "list_for_friends", ListForFriends);
         config.SetValue("display", "fxaa", Fxaa);
         config.SetValue("display", "vsync", Vsync);
         config.SetValue("display", "fullscreen", Fullscreen);
