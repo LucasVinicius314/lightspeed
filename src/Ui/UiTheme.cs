@@ -54,6 +54,14 @@ public static class UiTheme
         theme.SetColor("font_hover_color", "CheckButton", Colors.White);
         theme.SetColor("font_hover_pressed_color", "CheckButton", Colors.White);
 
+        var field = new Color(0.08f, 0.09f, 0.13f);
+        theme.SetStylebox("normal", "LineEdit", Box(field, 5, 8, 5, new Color(1, 1, 1, 0.12f)));
+        theme.SetStylebox("focus", "LineEdit", Box(field, 5, 8, 5, Accent));
+        theme.SetStylebox("read_only", "LineEdit", Box(field, 5, 8, 5));
+        theme.SetColor("font_color", "LineEdit", Text);
+        theme.SetColor("font_placeholder_color", "LineEdit", Dim with { A = 0.7f });
+        theme.SetColor("caret_color", "LineEdit", Accent);
+
         theme.SetStylebox("slider", "HSlider", Box(new Color(1, 1, 1, 0.12f), 3, 0, 3));
         theme.SetStylebox("grabber_area", "HSlider", Box(Accent with { A = 0.85f }, 3, 0, 3));
         theme.SetStylebox("grabber_area_highlight", "HSlider", Box(Accent, 3, 0, 3));

@@ -79,6 +79,12 @@ public static class GameSettings
 
     /// <summary>Drone pitch from the mouse. Off (the flight-sim norm): push forward to dive. On: push forward to climb.</summary>
     public static bool DroneInvertPitch { get; set; }
+    /// <summary>Address of the p2p-signaling-server, for example https://signal.example.com. Empty until the player sets it.</summary>
+    public static string NetServerUrl { get; set; } = "";
+
+    /// <summary>The name other players see in the roster.</summary>
+    public static string PlayerName { get; set; } = "Player";
+
     public static bool Fxaa { get; set; }
     public static bool Vsync { get; set; }
     public static bool Fullscreen { get; set; }
@@ -107,6 +113,10 @@ public static class GameSettings
                 CameraMode = mode;
             else if (arg.StartsWith("--history="))
                 HistorySeconds = float.Parse(arg["--history=".Length..], CultureInfo.InvariantCulture);
+            else if (arg.StartsWith("--net-url="))
+                NetServerUrl = arg["--net-url=".Length..];
+            else if (arg.StartsWith("--net-name="))
+                PlayerName = arg["--net-name=".Length..];
             else if (arg.StartsWith("--max-edge="))
                 MaxEdgeLength = float.Parse(arg["--max-edge=".Length..], CultureInfo.InvariantCulture);
         }
@@ -161,6 +171,8 @@ public static class GameSettings
         LimitToC = (bool)config.GetValue("camera", "limit_to_c", LimitToC);
         DroneCrt = (bool)config.GetValue("camera", "drone_crt", DroneCrt);
         DroneInvertPitch = (bool)config.GetValue("camera", "drone_invert_pitch", DroneInvertPitch);
+        NetServerUrl = (string)config.GetValue("net", "server_url", NetServerUrl);
+        PlayerName = (string)config.GetValue("net", "player_name", PlayerName);
         Fxaa = (bool)config.GetValue("display", "fxaa", Fxaa);
         Vsync = (bool)config.GetValue("display", "vsync", Vsync);
         Fullscreen = (bool)config.GetValue("display", "fullscreen", Fullscreen);
@@ -180,6 +192,8 @@ public static class GameSettings
         config.SetValue("camera", "limit_to_c", LimitToC);
         config.SetValue("camera", "drone_crt", DroneCrt);
         config.SetValue("camera", "drone_invert_pitch", DroneInvertPitch);
+        config.SetValue("net", "server_url", NetServerUrl);
+        config.SetValue("net", "player_name", PlayerName);
         config.SetValue("display", "fxaa", Fxaa);
         config.SetValue("display", "vsync", Vsync);
         config.SetValue("display", "fullscreen", Fullscreen);

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Godot;
 using Lightspeed.Core;
 using Lightspeed.History;
+using Lightspeed.Net;
 using Lightspeed.Ui;
 using Lightspeed.Visuals;
 
@@ -60,7 +61,7 @@ public partial class Thrower : Node3D
             case InputEventKey { Pressed: true, Echo: false, Keycode: Key.B }:
                 Select(SelectedIndex + 1);
                 break;
-            case InputEventKey { Pressed: true, Echo: false, Keycode: Key.X }:
+            case InputEventKey { Pressed: true, Echo: false, Keycode: Key.X } when !NetSession.IsClient:
                 Clear();
                 break;
         }
@@ -88,10 +89,23 @@ public partial class Thrower : Node3D
         var camera = GetViewport().GetCamera3D();
         if (camera == null || Scenes.Count == 0)
             return;
-
-        var instance = Scenes[SelectedIndex % Scenes.Count].Instantiate<RigidBody3D>();
         var forward = -camera.GlobalBasis.Z;
-        instance.Position = camera.GlobalPosition + forward * 1.2f;
+        var origin = camera.GlobalPosition + forward * 1.2f;
+        if (NetSession.IsClient)
+        {
+            NetSession.Instance.RequestThrow(SelectedIndex, origin, forward); // the host owns the physics
+            return;
+        }
+        ThrowFrom(SelectedIndex, origin, forward);
+    }
+
+    /// <summary>Throws object number <paramref name="shapeIndex"/> from a point along a direction (the host does this for clients).</summary>
+    public void ThrowFrom(int shapeIndex, Vector3 origin, Vector3 forward)
+    {
+        if (Scenes.Count == 0)
+            return;
+        var instance = Scenes[Mathf.PosMod(shapeIndex, Scenes.Count)].Instantiate<RigidBody3D>();
+        instance.Position = origin;
         instance.Rotation = new Vector3(_rng.Randf() * Mathf.Tau, _rng.Randf() * Mathf.Tau, 0);
 
         // Stay well under c: at low c the limiter would clip a harder throw anyway.
@@ -99,10 +113,12 @@ public partial class Thrower : Node3D
         instance.LinearVelocity = forward * speed;
         instance.AngularVelocity = new Vector3(_rng.RandfRange(-3, 3), _rng.RandfRange(-3, 3), _rng.RandfRange(-3, 3));
 
-        instance.GetNode<DelayedVisual>("DelayedVisual").Albedo = Color.FromHsv(_rng.Randf(), 0.65f, 1f);
+        var color = Color.FromHsv(_rng.Randf(), 0.65f, 1f);
+        instance.GetNode<DelayedVisual>("DelayedVisual").Albedo = color;
         var history = instance.GetNode<LightHistory>("LightHistory");
         AddChild(instance);
         _alive.Add((history, SimClock.Instance.Time + Lifetime));
+        NetSession.Instance.OnBodySpawned(instance, color);
 
         if (_alive.Count > MaxAlive)
         {

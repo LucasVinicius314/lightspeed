@@ -1,5 +1,7 @@
+using System;
 using System.Globalization;
 using Godot;
+using Lightspeed.Net;
 
 namespace Lightspeed.Core;
 
@@ -21,6 +23,18 @@ public partial class SimClock : Node
     /// <summary>Starts at 0; `-- --start-tick=N` begins later to test long-running precision.</summary>
     public long Tick { get; private set; }
     public double Time => Tick * TickDelta;
+
+    /// <summary>
+    /// Added to <see cref="Time"/> to get <see cref="WorldTime"/>. Zero offline and for a host; a client sets it so
+    /// that its scripted motion matches the host's. It never touches ticks or the light history.
+    /// </summary>
+    public double WorldOffset { get; set; }
+
+    /// <summary>
+    /// The time every scripted mover (orbiters, the car, the fan blades, ...) computes its position from. Peers in a
+    /// session share it, so they all see the same objects in the same places. Ticks stay local to each machine.
+    /// </summary>
+    public double WorldTime => Time + WorldOffset;
 
     /// <summary>Index into <see cref="SpeedLadder.Steps"/>.</summary>
     public int StepIndex { get; private set; }
@@ -50,6 +64,12 @@ public partial class SimClock : Node
     private long _stepUntil = -1;
     private long _pauseAtTick = -1;
     private bool _pausePending;
+
+    /// <summary>Raised when the speed of light, time scale or pause changed through the host-side path (a host broadcasts it).</summary>
+    public event Action? SharedChanged;
+
+    /// <summary>Raised when a single tick was stepped while paused (a host tells clients to step too).</summary>
+    public event Action? Stepped;
 
     [Signal] public delegate void TickedEventHandler(long tick, double time);
     [Signal] public delegate void CChangedEventHandler(float c);
@@ -98,7 +118,11 @@ public partial class SimClock : Node
         if (!_pausePending)
             return;
         _pausePending = false;
+        bool wasPaused = Paused;
+        Paused = true;
         Freeze();
+        if (!wasPaused && !NetSession.IsClient)
+            SharedChanged?.Invoke(); // a scripted pause (--pause-at-tick) reaches clients like any other
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -133,7 +157,55 @@ public partial class SimClock : Node
         }
     }
 
+    // The shared settings (speed of light, time scale, pause, stepping) belong to the host in a session. A
+    // client's own input is sent to the host, which applies it and tells everyone; the Apply... methods below
+    // are what actually changes the clock, on the host and, for host-sent changes, on clients.
+
     public void SetTimeScale(float scale)
+    {
+        if (NetSession.IsClient) { NetSession.Instance.RequestTimeScale(scale); return; }
+        ApplyTimeScale(scale);
+        SharedChanged?.Invoke();
+    }
+
+    public void SetPaused(bool paused)
+    {
+        if (NetSession.IsClient) { NetSession.Instance.RequestPaused(paused); return; }
+        ApplyPaused(paused);
+        SharedChanged?.Invoke();
+    }
+
+    /// <summary>While paused, runs exactly one more tick (physics included) and freezes again.</summary>
+    public void StepTick()
+    {
+        if (NetSession.IsClient) { NetSession.Instance.RequestStep(); return; }
+        if (ApplyStep())
+            Stepped?.Invoke();
+    }
+
+    public void StepFaster() => SetStepIndex(StepIndex + 1);
+    public void StepSlower() => SetStepIndex(StepIndex - 1);
+
+    public void SetStepIndex(int index)
+    {
+        index = Mathf.Clamp(index, 0, SpeedLadder.Steps.Count - 1);
+        if (NetSession.IsClient) { NetSession.Instance.RequestStepIndex(index); return; }
+        if (ApplyStepIndex(index))
+            SharedChanged?.Invoke();
+    }
+
+    /// <summary>Client: take the host's shared settings.</summary>
+    public void ApplyFromHost(int stepIndex, float timeScale, bool paused)
+    {
+        ApplyStepIndex(Mathf.Clamp(stepIndex, 0, SpeedLadder.Steps.Count - 1));
+        ApplyTimeScale(timeScale);
+        ApplyPaused(paused);
+    }
+
+    /// <summary>Client: the host stepped one tick.</summary>
+    public void ApplyStepFromHost() => ApplyStep();
+
+    private void ApplyTimeScale(float scale)
     {
         int ticksPerSecond = Mathf.Clamp(Mathf.RoundToInt(TickRate * scale), 1, (int)(TickRate * MaxTimeScale));
         TimeScale = (float)ticksPerSecond / TickRate;
@@ -141,8 +213,10 @@ public partial class SimClock : Node
         Engine.TimeScale = TimeScale;
     }
 
-    public void SetPaused(bool paused)
+    private void ApplyPaused(bool paused)
     {
+        if (paused == Paused && _stepUntil < 0)
+            return;
         _stepUntil = -1;
         _pausePending = false;
         if (paused)
@@ -157,30 +231,27 @@ public partial class SimClock : Node
         }
     }
 
-    /// <summary>While paused, runs exactly one more tick (physics included) and freezes again.</summary>
-    public void StepTick()
+    private bool ApplyStep()
     {
         if (!Paused || _stepUntil >= 0)
-            return;
+            return false;
         _stepUntil = Tick + 1;
         GetTree().Paused = false;
+        return true;
+    }
+
+    private bool ApplyStepIndex(int index)
+    {
+        if (index == StepIndex)
+            return false;
+        StepIndex = index;
+        EmitSignal(SignalName.CChanged, C);
+        return true;
     }
 
     private void Freeze()
     {
         FrozenAge = Engine.GetPhysicsInterpolationFraction() * TickDelta;
         GetTree().Paused = true;
-    }
-
-    public void StepFaster() => SetStepIndex(StepIndex + 1);
-    public void StepSlower() => SetStepIndex(StepIndex - 1);
-
-    public void SetStepIndex(int index)
-    {
-        index = Mathf.Clamp(index, 0, SpeedLadder.Steps.Count - 1);
-        if (index == StepIndex)
-            return;
-        StepIndex = index;
-        EmitSignal(SignalName.CChanged, C);
     }
 }

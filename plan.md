@@ -22,7 +22,8 @@
 | Camera modes: Fly, Drone (momentum, banking, CRT feed with on-screen display), Walk (character controller) | Done |
 | Physics objects: throw balls, boxes and cylinders (left click) | Done |
 | Time control: pause, single-step, time scale that scales the whole clock | Done |
-| M5–M8, optional | Next: your call |
+| Multiplayer (M7): host and join by room code, shared world, remote players as delayed parts | Done (see notes) |
+| M5, M6, M8, optional | Next: your call |
 
 ## Decisions
 
@@ -52,9 +53,9 @@
 | F3 | Cycle debug text: off, simple (profiler), full (profiler plus debug view). Saved to `user://debug_mode.cfg`; the first run starts in full |
 | 1 / 2 / 3 | In full mode: ghosts, delay rings, delay labels and lines. Saved to `user://debug_view.cfg` |
 
-**Settings menu** (Tab) has one tab per section, in a fixed-width panel (long values are clipped, never widen it): *Light* (speed of light, fast parts: One image / Light Echoes / Exact rays, max echoes per part, mesh edge length, CPU reference solve), *Simulation* (pause, step, time scale, timed ball spawning, spawn interval, ball lifetime, spawn 25 balls, remove spawned balls, and the thrown object, throw speed and remove thrown objects), *Camera* (mode, invert drone pitch, drone CRT effect, field of view, mouse sensitivity, move speed, keep camera below c), *Controls* (every keybind), *Debug* (debug text mode, ghosts, rings, labels), *Display* (FXAA, VSync, fullscreen), and *Reset everything*. Hover a control for a tooltip. Most settings are saved to `user://settings.cfg`; the debug toggles keep their own files; the speed of light, time scale, pause and camera mode are not saved. Scripted runs (`--screenshot`, `--no-settings`) ignore the saved file.
+**Settings menu** (Tab) has one tab per section (including *Multiplayer*: server address, name, host, join by code, roster), in a fixed-width panel (long values are clipped, never widen it): *Light* (speed of light, fast parts: One image / Light Echoes / Exact rays, max echoes per part, mesh edge length, CPU reference solve), *Simulation* (pause, step, time scale, timed ball spawning, spawn interval, ball lifetime, spawn 25 balls, remove spawned balls, and the thrown object, throw speed and remove thrown objects), *Camera* (mode, invert drone pitch, drone CRT effect, field of view, mouse sensitivity, move speed, keep camera below c), *Controls* (every keybind), *Debug* (debug text mode, ghosts, rings, labels), *Display* (FXAA, VSync, fullscreen), and *Reset everything*. Hover a control for a tooltip. Most settings are saved to `user://settings.cfg`; the debug toggles keep their own files; the speed of light, time scale, pause and camera mode are not saved. Scripted runs (`--screenshot`, `--no-settings`) ignore the saved file.
 
-**Command-line options** (after `--`): `--cpu`, `--c=<m/s>`, `--screenshot=<file.png>`, `--cam=x,y,z,yawDeg,pitchDeg`, `--at-tick=N`, `--stress=N`, `--start-tick=N`, `--max-edge=<m>`, `--no-echoes`, `--echoes`, `--rays`, `--open-menu`, `--menu-tab=<name>`, `--no-settings`, `--mode=fly|drone|walk`, `--throw=N` (throw N objects at start), `--pause-at-tick=N` (freeze the clock at tick N).
+**Command-line options** (after `--`): `--cpu`, `--c=<m/s>`, `--screenshot=<file.png>`, `--cam=x,y,z,yawDeg,pitchDeg`, `--at-tick=N`, `--stress=N`, `--start-tick=N`, `--max-edge=<m>`, `--no-echoes`, `--echoes`, `--rays`, `--open-menu`, `--menu-tab=<name>`, `--no-settings`, `--mode=fly|drone|walk`, `--throw=N` (throw N objects at start), `--pause-at-tick=N` (freeze the clock at tick N), `--net-*` (multiplayer, see CLAUDE.md).
 
 ## Architecture
 
@@ -93,6 +94,8 @@ The physics body and the visual are separate, so the real simulation never knows
 **History texture layout:** sample time is implicit (newest = now, each older sample is one tick earlier). All objects share one write head and count; each object's own birth/death tick lives in the metadata texture, with ticks stored modulo 2^20.
 
 **Object lifetime:** spawn and despawn objects with `LightHistory` (`Despawn()`), never by freeing the body directly. Teleport with `BreakNext()`.
+
+**Multiplayer.** One player hosts, others join by a room code through the separate p2p-signaling-server (bucket `lightspeed`); after the introduction everything runs peer to peer over WebRTC in a star around the host. The host runs the physics and owns the shared settings; clients send their camera pose and requests, and follow what the host sends (30 snapshots a second). Remote players are `RemoteAvatar`s built from delayed parts, so they are seen through the light delay plus network latency. Scripted movers are functions of `SimClock.WorldTime`, which clients adopt from the host, so they match with no replication; ticks and history stay local. A client's physics bodies are frozen puppets moved by the host's snapshots; balls and thrown objects are announced as they appear and disappear. Known limits of this first version: clients cannot push physics bodies (only the host's collisions count), a paused world also freezes remote players, other players have no name tags, and the host leaving ends the session for everyone (clients carry on offline). `NetSession` (autoload), `NetCodec`, `RemoteAvatar` live in `src/Net`; the signaling client library is a git submodule (`libs/p2p-signaling-server`) whose sources are compiled into the game assembly. The native WebRTC extension is fetched by `scripts/fetch-webrtc` (pinned, SHA-256 verified).
 
 **Tick order** (physics priorities): `SimClock` −1000, movers 0, `LightHistory` 1000, `HistoryTexture` 2000.
 

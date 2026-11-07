@@ -3,6 +3,7 @@ using Godot;
 using Lightspeed.Core;
 using Lightspeed.Debug;
 using Lightspeed.History;
+using Lightspeed.Net;
 
 namespace Lightspeed.Ui;
 
@@ -91,7 +92,15 @@ public partial class LightSpeedHud : CanvasLayer
             : Mathf.IsEqualApprox(clock.TimeScale, 1f) ? "" : $"time x{clock.TimeScale:0.##}";
         string throwable = GetTree().GetFirstNodeInGroup("thrower") is Demo.Thrower thrower
             ? $"click: throw {thrower.SelectedName.ToLowerInvariant()}" : "";
-        string text = string.Join("     ", new[] { mode, time, throwable }.Where(part => part.Length > 0));
+        var net = NetSession.Instance;
+        string session = net.State switch
+        {
+            NetSession.Role.Host => $"HOSTING {net.RoomCode}  ({net.Players.Count} players)",
+            NetSession.Role.Client => $"IN A SESSION  ({net.Players.Count} players)" + (net.PingMs >= 0 ? $"  {net.PingMs:0} ms" : ""),
+            NetSession.Role.Connecting => "CONNECTING ...",
+            _ => "",
+        };
+        string text = string.Join("     ", new[] { mode, session, time, throwable }.Where(part => part.Length > 0));
         if (text == _lastStatus)
             return;
         _lastStatus = text;

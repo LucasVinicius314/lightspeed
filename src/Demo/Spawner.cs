@@ -3,6 +3,7 @@ using System.Globalization;
 using Godot;
 using Lightspeed.Core;
 using Lightspeed.History;
+using Lightspeed.Net;
 using Lightspeed.Visuals;
 
 namespace Lightspeed.Demo;
@@ -59,6 +60,8 @@ public partial class Spawner : Node3D
 
     public override void _PhysicsProcess(double delta)
     {
+        if (NetSession.IsClient)
+            return; // in a session the host spawns, and clients see its balls
         double now = SimClock.Instance.Time;
 
         while (_timedSpawning && Interval > 0 && now >= _nextSpawn)
@@ -81,6 +84,8 @@ public partial class Spawner : Node3D
     /// <summary>Drops <paramref name="count"/> objects at random places right now.</summary>
     public void SpawnBurst(int count)
     {
+        if (NetSession.IsClient)
+            return;
         for (int i = 0; i < count; i++)
             Spawn(new Vector3(
                 _rng.RandfRange(-HalfExtent, HalfExtent), Height + _rng.RandfRange(0, 6), _rng.RandfRange(-HalfExtent, HalfExtent)));
@@ -103,9 +108,11 @@ public partial class Spawner : Node3D
         var instance = Scene.Instantiate<Node3D>();
         instance.Position = position;
         var history = instance.GetNode<LightHistory>("LightHistory");
-        instance.GetNode<DelayedVisual>("DelayedVisual").Albedo =
-            Color.FromHsv(_rng.Randf(), 0.6f, 1f);
+        var color = Color.FromHsv(_rng.Randf(), 0.6f, 1f);
+        instance.GetNode<DelayedVisual>("DelayedVisual").Albedo = color;
         AddChild(instance);
         _alive.Add((history, SimClock.Instance.Time + Lifetime));
+        if (instance is RigidBody3D body)
+            NetSession.Instance.OnBodySpawned(body, color);
     }
 }

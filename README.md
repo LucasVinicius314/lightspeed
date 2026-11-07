@@ -25,6 +25,14 @@ $ProgressPreference='SilentlyContinue'; Invoke-WebRequest https://github.com/Luc
 curl -fL https://github.com/LucasVinicius314/lightspeed/releases/latest/download/Lightspeed-linux.tar.gz -o Lightspeed-linux.tar.gz && mkdir -p Lightspeed && tar -xzf Lightspeed-linux.tar.gz -C Lightspeed && chmod +x Lightspeed/Lightspeed.x86_64 && ./Lightspeed/Lightspeed.x86_64
 ```
 
+## Play with friends
+
+Press **Tab**, open the **Multiplayer** tab, enter the server address once, and either **Host a game** (you get
+a room code to share) or type a friend's code and **Join**. The host runs the physics and decides the speed of light,
+time scale and pause; everyone else sees the same world, and sees each other through the same light delay as
+everything else. The game finds players through a small signaling server ([p2p-signaling-server](https://github.com/LucasVinicius314/p2p-signaling-server)),
+then plays peer to peer; that server needs a bucket named `lightspeed` that accepts this game's version.
+
 ## Update
 
 Inside the game folder, double-click **Update.bat** (Windows) or run `bash update.sh` (Linux). It looks up the

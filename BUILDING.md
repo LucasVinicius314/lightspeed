@@ -31,6 +31,18 @@ On Linux, macOS or Git Bash use `./build.sh` (or `bash build.sh` if git did not 
    They install to `%APPDATA%\Godot\export_templates\4.7.2.stable.mono` (`~/.local/share/godot/export_templates/...`
    on Linux). The same templates cover both targets, so you can build for Linux from Windows and the reverse.
 
+### Clone with submodules
+
+The multiplayer client library comes from a git submodule, `libs/p2p-signaling-server`. Clone with
+`git clone --recurse-submodules`, or run `git submodule update --init` in an existing clone. The build scripts stop with a
+message if it is missing, and the release workflow checks it out.
+
+### Multiplayer needs one more download
+
+Run `scripts\fetch-webrtc.ps1` (or `bash scripts/fetch-webrtc.sh`) once. It downloads the WebRTC native extension
+(about 90 MB, pinned and SHA-256 verified) into `addons/webrtc_native`, which is not committed. The build scripts stop
+with a message if it is missing, and the release workflow runs the same script.
+
 ## What you get
 
 | Target | Output | Run it |

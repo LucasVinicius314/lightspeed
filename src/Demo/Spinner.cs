@@ -27,7 +27,7 @@ public partial class Spinner : Node3D
 
     public override void _PhysicsProcess(double delta)
     {
-        float angle = (float)(AngularSpeed * SimClock.Instance.Time % System.Math.Tau);
+        float angle = (float)(AngularSpeed * SimClock.Instance.WorldTime % System.Math.Tau);
         Basis = _rest * new Basis(Axis.Normalized(), angle);
     }
 }

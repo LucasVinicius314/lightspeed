@@ -21,7 +21,7 @@ public partial class Oscillator : AnimatableBody3D
 
     public override void _PhysicsProcess(double delta)
     {
-        float phase = (float)(AngularSpeed * SimClock.Instance.Time % System.Math.Tau);
+        float phase = (float)(AngularSpeed * SimClock.Instance.WorldTime % System.Math.Tau);
         Position = Center + Axis.Normalized() * Amplitude * Mathf.Sin(phase);
     }
 }

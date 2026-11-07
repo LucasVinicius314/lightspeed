@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 SimClock="*res://src/Core/SimClock.cs"
 HistoryTexture="*res://src/History/HistoryTexture.cs"
+NetSession="*res://src/Net/NetSession.cs"
 
 [display]
 

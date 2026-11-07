@@ -91,6 +91,13 @@ $presets = @{
 $targets = if ($Target -eq 'all') { 'windows', 'linux' } else { @($Target) }
 $mode = if ($Debug) { '--export-debug' } else { '--export-release' }
 
+if (-not (Test-Path 'libs\p2p-signaling-server\clients\godot-csharp\src\P2PLobby.cs')) {
+    throw 'The p2p-signaling-server submodule is missing. Run: git submodule update --init'
+}
+if (-not (Test-Path 'addons\webrtc_native\webrtc_native.gdextension')) {
+    throw 'The WebRTC native extension is missing, so the build would have no multiplayer. Run: .\scripts\fetch-webrtc.ps1'
+}
+
 Write-Host "Importing project ($fullVersion) ..."
 & $godotExe --headless --quiet --path . --import | Out-Null
 

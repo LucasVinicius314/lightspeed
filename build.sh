@@ -82,6 +82,15 @@ declare -A out=( [windows]="build/windows/Lightspeed.exe" [linux]="build/linux/L
 if [[ "$target" == all ]]; then targets=(windows linux); else targets=("$target"); fi
 mode=--export-release; (( debug )) && mode=--export-debug
 
+if [[ ! -f libs/p2p-signaling-server/clients/godot-csharp/src/P2PLobby.cs ]]; then
+  echo "The p2p-signaling-server submodule is missing. Run: git submodule update --init" >&2
+  exit 1
+fi
+if [[ ! -f addons/webrtc_native/webrtc_native.gdextension ]]; then
+  echo "The WebRTC native extension is missing, so the build would have no multiplayer. Run: bash scripts/fetch-webrtc.sh" >&2
+  exit 1
+fi
+
 echo "Importing project ($full_version) ..."
 "$godot" --headless --quiet --path . --import >/dev/null 2>&1 || true
 

@@ -6,6 +6,7 @@ using Lightspeed.Core;
 using Lightspeed.Debug;
 using Lightspeed.Demo;
 using Lightspeed.History;
+using Lightspeed.Net;
 using Lightspeed.Player;
 
 namespace Lightspeed.Ui;
@@ -39,6 +40,7 @@ public partial class SettingsMenu : CanvasLayer
         BuildLightSection();
         BuildSimulationSection();
         BuildCameraSection();
+        BuildMultiplayerSection();
         BuildControlsSection();
         BuildDebugSection();
         BuildDisplaySection();
@@ -79,7 +81,7 @@ public partial class SettingsMenu : CanvasLayer
             Toggle();
             GetViewport().SetInputAsHandled();
         }
-        else if (key.Keycode == Key.H)
+        else if (key.Keycode == Key.H && GetViewport().GuiGetFocusOwner() is not LineEdit)
         {
             // H opens the menu on the Controls tab, or closes it when that tab is already showing.
             if (IsOpen && _tabs.CurrentTab == ControlsTab())
@@ -115,6 +117,8 @@ public partial class SettingsMenu : CanvasLayer
     private void Toggle()
     {
         IsOpen = !IsOpen;
+        if (!IsOpen)
+            GetViewport().GuiReleaseFocus(); // a text field must not keep eating keys once the menu is closed
         _panel.Visible = IsOpen;
         if (IsOpen)
         {
@@ -256,6 +260,104 @@ public partial class SettingsMenu : CanvasLayer
             () => GameSettings.LimitToC,
             v => { GameSettings.LimitToC = v; GameSettings.Commit(); },
             "Cap the camera at 0.9c, like everything else. At low c you would barely move.");
+    }
+
+    private string _joinCode = "";
+
+    private void BuildMultiplayerSection()
+    {
+        Section("Multiplayer");
+        var net = NetSession.Instance;
+
+        var status = new Label
+        {
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(60, 0),
+        };
+        _box.AddChild(status);
+        var code = new Label { HorizontalAlignment = HorizontalAlignment.Center };
+        code.AddThemeFontSizeOverride("font_size", 28);
+        code.AddThemeColorOverride("font_color", UiTheme.Accent);
+        _box.AddChild(code);
+
+        SubSection("Server");
+        TextField("Server address", () => GameSettings.NetServerUrl,
+            v => { GameSettings.NetServerUrl = v.Trim(); GameSettings.Commit(); },
+            "https://signal.example.com",
+            "The p2p-signaling-server that introduces players. Only used to find each other; the game itself runs peer to peer.");
+        TextField("Your name", () => GameSettings.PlayerName,
+            v => { GameSettings.PlayerName = v; GameSettings.Commit(); }, "Player");
+
+        SubSection("Host a game");
+        var host = new Button { Text = "Host a game", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, FocusMode = Control.FocusModeEnum.None };
+        host.Pressed += net.Host;
+        var leave = new Button { Text = "Leave session", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, FocusMode = Control.FocusModeEnum.None };
+        leave.Pressed += net.Leave;
+        var hostRow = new HBoxContainer();
+        hostRow.AddChild(host);
+        hostRow.AddChild(leave);
+        _box.AddChild(hostRow);
+
+        SubSection("Join a game");
+        var joinRow = new HBoxContainer();
+        var codeEdit = new LineEdit
+        {
+            PlaceholderText = "Room code",
+            MaxLength = 12,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        codeEdit.TextChanged += text =>
+        {
+            _joinCode = text.ToUpperInvariant();
+            if (codeEdit.Text != _joinCode)
+            {
+                codeEdit.Text = _joinCode;
+                codeEdit.CaretColumn = _joinCode.Length;
+            }
+        };
+        var join = new Button { Text = "Join", FocusMode = Control.FocusModeEnum.None };
+        join.Pressed += () => net.Join(_joinCode);
+        codeEdit.TextSubmitted += _ => net.Join(_joinCode);
+        joinRow.AddChild(codeEdit);
+        joinRow.AddChild(join);
+        _box.AddChild(joinRow);
+
+        SubSection("Players");
+        var players = new Label
+        {
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(60, 0),
+        };
+        _box.AddChild(players);
+        var hint = new Label
+        {
+            Text = "The host runs the physics and decides the speed of light, the time scale and pause; a client's " +
+                   "changes to them are sent to the host. Other players are seen through the same light delay as " +
+                   "everything else, plus network latency.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(60, 0),
+        };
+        hint.AddThemeColorOverride("font_color", UiTheme.Dim);
+        hint.AddThemeFontSizeOverride("font_size", 12);
+        _box.AddChild(hint);
+
+        _refresh.Add(() =>
+        {
+            status.Text = net.Status;
+            code.Text = net.State == NetSession.Role.Host && net.RoomCode != null ? net.RoomCode : "";
+            code.Visible = code.Text.Length > 0;
+            bool offline = net.State == NetSession.Role.Offline;
+            host.Disabled = !offline;
+            join.Disabled = !offline;
+            leave.Disabled = offline;
+            players.Text = net.Players.Count == 0
+                ? "Not in a session."
+                : string.Join("\n", net.Players.OrderBy(p => p.Key).Select(p => $"{(p.Key == 1 ? "Host" : "Player")}: {p.Value}"))
+                  + (net.PingMs >= 0 ? $"\nPing to the host: {net.PingMs:0} ms" : "");
+        });
     }
 
     private void BuildControlsSection()
@@ -518,6 +620,27 @@ public partial class SettingsMenu : CanvasLayer
         row.AddChild(option);
         _box.AddChild(row);
         _refresh.Add(() => option.Select(get()));
+    }
+
+    /// <summary>A text field in a labelled row. It only takes the stored value while it is not being edited.</summary>
+    private void TextField(string text, Func<string> get, Action<string> set, string placeholder, string? tip = null)
+    {
+        var row = new HBoxContainer { TooltipText = tip ?? "" };
+        row.AddChild(new Label { Text = text, CustomMinimumSize = new Vector2(150, 0), ClipText = true });
+        var edit = new LineEdit
+        {
+            PlaceholderText = placeholder,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(60, 0),
+        };
+        edit.TextChanged += value => set(value);
+        row.AddChild(edit);
+        _box.AddChild(row);
+        _refresh.Add(() =>
+        {
+            if (!edit.HasFocus())
+                edit.Text = get();
+        });
     }
 
     private void Buttons(params (string Text, Action Action)[] buttons)

@@ -18,7 +18,7 @@ transparency = 1
 shading_mode = 0
 albedo_color = Color(1, 1, 1, 0.25)
 
-[node name="BouncingBall" type="RigidBody3D"]
+[node name="BouncingBall" type="RigidBody3D" groups=["net_body"]]
 physics_material_override = SubResource("PhysMat_1")
 linear_damp = 0.05
 

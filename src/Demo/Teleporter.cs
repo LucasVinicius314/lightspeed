@@ -18,7 +18,7 @@ public partial class Teleporter : AnimatableBody3D
 
     public override void _PhysicsProcess(double delta)
     {
-        long index = (long)(SimClock.Instance.Time / Interval) % Positions.Length;
+        long index = (long)(SimClock.Instance.WorldTime / Interval) % Positions.Length;
         if (index == _lastIndex)
             return;
 

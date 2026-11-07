@@ -29,7 +29,7 @@ public partial class CircleMover : AnimatableBody3D
 
     public override void _PhysicsProcess(double delta)
     {
-        double t = SimClock.Instance.Time;
+        double t = SimClock.Instance.WorldTime;
         float a = (float)(AngularSpeed * t % System.Math.Tau);
         float bob = BobAmplitude * Mathf.Sin((float)(BobSpeed * t % System.Math.Tau));
         float side = Mathf.Sign(AngularSpeed);

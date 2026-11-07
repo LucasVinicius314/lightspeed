@@ -29,6 +29,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          submodules: true   # libs/p2p-signaling-server, the multiplayer client library (a public repository)
 
       - name: Only release commits that are on main
         run: |
@@ -84,6 +85,9 @@ jobs:
             templates/windows_release_x86_64_console.exe \
             templates/linux_release.x86_64 \
             -d "$dest"
+
+      - name: Fetch the WebRTC native extension (multiplayer)
+        run: bash scripts/fetch-webrtc.sh
 
       - name: Build Windows and Linux
         run: |

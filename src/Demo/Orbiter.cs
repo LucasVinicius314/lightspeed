@@ -25,7 +25,7 @@ public partial class Orbiter : AnimatableBody3D
     public override void _PhysicsProcess(double delta)
     {
         // Phases are reduced in double before narrowing, so they stay exact however long the sim runs.
-        double t = SimClock.Instance.Time;
+        double t = SimClock.Instance.WorldTime;
         float a = (float)(AngularSpeed * t % System.Math.Tau);
         float spin = (float)(SpinSpeed * t % System.Math.Tau);
         Position = Center + new Vector3(Mathf.Cos(a), 0, Mathf.Sin(a)) * Radius;
