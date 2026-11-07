@@ -52,6 +52,9 @@ public partial class NetSession : Node
     private const int PingIntervalMs = 250;
     private const double TimeSlewPerSnapshot = 0.001;
     private const double TimeSnapSeconds = 0.5;
+    /// <summary>How far behind the host's world time (in real seconds) puppets are drawn: about three snapshots, so a late or lost one is bridged.</summary>
+    private const double InterpDelaySeconds = 0.1;
+    private const int MaxSamples = 12;
 
     public enum Role { Offline, Connecting, Host, Client }
 
@@ -85,9 +88,42 @@ public partial class NetSession : Node
         public required int Id;
         public required RigidBody3D Node;
         public required int Kind; // index into KindScenes; -1 for a body that is part of the scene
-        public bool HasTarget;
-        public Vector3 TargetPosition;
-        public Quaternion TargetRotation = Quaternion.Identity;
+        /// <summary>The host's recent poses of this body, oldest first, stamped with the host's world time.</summary>
+        private readonly List<(double Time, Vector3 Position, Quaternion Rotation)> _samples = new();
+
+        public bool HasTarget => _samples.Count > 0;
+
+        public void AddSample(double time, Vector3 position, Quaternion rotation)
+        {
+            if (_samples.Count > 0 && time <= _samples[^1].Time)
+            {
+                if (_samples[^1].Time - time < 1.0)
+                    return; // a snapshot that arrived out of order
+                _samples.Clear(); // the world time jumped back: start over
+            }
+            _samples.Add((time, position, rotation));
+            if (_samples.Count > MaxSamples)
+                _samples.RemoveAt(0);
+        }
+
+        /// <summary>The pose at a world time: interpolated between the two samples around it, held at either end.</summary>
+        public (Vector3 Position, Quaternion Rotation) PoseAt(double time)
+        {
+            var first = _samples[0];
+            if (time <= first.Time)
+                return (first.Position, first.Rotation);
+            for (int i = 1; i < _samples.Count; i++)
+            {
+                var next = _samples[i];
+                if (time > next.Time)
+                    continue;
+                var prev = _samples[i - 1];
+                float a = (float)((time - prev.Time) / (next.Time - prev.Time));
+                return (prev.Position.Lerp(next.Position, a), prev.Rotation.Slerp(next.Rotation, a).Normalized());
+            }
+            var last = _samples[^1];
+            return (last.Position, last.Rotation);
+        }
     }
 
     private P2PLobby? _lobby;
@@ -399,14 +435,16 @@ public partial class NetSession : Node
 
         if (State != Role.Client)
             return;
-        // Puppets ease toward the host's latest pose for them.
+        // Puppets are drawn a little behind the host's world time, interpolating between its snapshots. The delay is
+        // in world seconds, so it follows the time scale; paused, the world is still and the newest pose is the answer.
+        var clock = SimClock.Instance;
+        double renderTime = clock.WorldTime - (clock.Paused ? 0.0 : InterpDelaySeconds * clock.TimeScale);
         foreach (var body in _bodies.Values)
         {
             if (!body.HasTarget || !IsInstanceValid(body.Node))
                 continue;
-            var t = body.Node.GlobalTransform;
-            var q = t.Basis.GetRotationQuaternion().Slerp(body.TargetRotation, 0.5f).Normalized();
-            body.Node.GlobalTransform = new Transform3D(new Basis(q), t.Origin.Lerp(body.TargetPosition, 0.5f));
+            var (position, rotation) = body.PoseAt(renderTime);
+            body.Node.GlobalTransform = new Transform3D(new Basis(rotation), position);
         }
     }
 
@@ -567,11 +605,10 @@ public partial class NetSession : Node
         {
             if (!_bodies.TryGetValue(pose.Id, out var body))
                 continue;
-            body.TargetPosition = pose.Position;
-            body.TargetRotation = pose.Rotation;
-            if (!body.HasTarget && IsInstanceValid(body.Node)) // the first pose is taken as is
+            bool first = !body.HasTarget;
+            body.AddSample(worldTime, pose.Position, pose.Rotation);
+            if (first && IsInstanceValid(body.Node)) // the first pose is taken as is
                 body.Node.GlobalTransform = new Transform3D(new Basis(pose.Rotation), pose.Position);
-            body.HasTarget = true;
         }
     }
 
@@ -777,10 +814,10 @@ public partial class NetSession : Node
         body.Transform = new Transform3D(new Basis(rotation), position);
         body.GetNode<DelayedVisual>("DelayedVisual").Albedo = color;
         Container().AddChild(body);
-        _bodies[id] = new NetBody
-        {
-            Id = id, Node = body, Kind = kind, HasTarget = true, TargetPosition = position, TargetRotation = rotation,
-        };
+        var puppet = new NetBody { Id = id, Node = body, Kind = kind };
+        // Older than any snapshot that can follow, so the first real one is accepted; until then it stays put.
+        puppet.AddSample(SimClock.Instance.WorldTime - 1.0, position, rotation);
+        _bodies[id] = puppet;
     }
 
     /// <summary>Where puppets of spawned bodies live, so they are never mistaken for scene bodies.</summary>

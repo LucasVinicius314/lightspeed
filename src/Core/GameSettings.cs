@@ -14,6 +14,8 @@ public enum FastPartRendering
     Echoes = 1,
     /// <summary>Exact rays: every pixel traces its own light ray back to the moving shape. Primitives only; others use Echoes.</summary>
     Rays = 2,
+    /// <summary>Exact rays for every primitive part, whatever its speed, so a part never switches renderer. Others use Echoes when fast.</summary>
+    RaysAlways = 3,
 }
 
 /// <summary>How the player moves. Cycled with V.</summary>
@@ -109,6 +111,8 @@ public static class GameSettings
                 FastParts = FastPartRendering.Echoes;
             else if (arg == "--rays")
                 FastParts = FastPartRendering.Rays;
+            else if (arg == "--rays-always")
+                FastParts = FastPartRendering.RaysAlways;
             else if (arg.StartsWith("--mode=") && Enum.TryParse<CameraMode>(arg["--mode=".Length..], true, out var mode))
                 CameraMode = mode;
             else if (arg.StartsWith("--history="))

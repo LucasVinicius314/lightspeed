@@ -216,6 +216,8 @@ public partial class HistoryTexture : Node
     /// <summary>Smoothed milliseconds the per-tick history update (recording, upload) costs on the CPU.</summary>
     public double UpdateMs { get; private set; }
 
+    private Image? _uploadImage;
+
     public override void _PhysicsProcess(double delta)
     {
         if (GetTree().Paused)
@@ -246,7 +248,11 @@ public partial class HistoryTexture : Node
 
         // Only the layer written this tick goes to the GPU.
         Buffer.BlockCopy(data, 0, _scratch, 0, _scratch.Length);
-        _history.UpdateLayer(Image.CreateFromData(Chunk * 2, MaxObjects, false, Image.Format.Rgbaf, _scratch), layer);
+        // One reused image: a new one per tick is hundreds of KB of native memory that only a full GC would free,
+        // which showed up as a long stall every few seconds.
+        _uploadImage ??= Image.CreateEmpty(Chunk * 2, MaxObjects, false, Image.Format.Rgbaf);
+        _uploadImage.SetData(Chunk * 2, MaxObjects, false, Image.Format.Rgbaf, _scratch);
+        _history.UpdateLayer(_uploadImage, layer);
 
         if (_metaDirty)
         {

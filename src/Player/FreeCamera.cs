@@ -27,7 +27,8 @@ public partial class FreeCamera : Camera3D
     private const float EyeHeight = 1.65f;
     private const float BodyHeight = 1.8f;
     private const float BodyRadius = 0.35f;
-    private const float WalkSprint = 1.8f;
+    private const float WalkFactor = 0.5f;    // walking pace relative to the Move speed setting (flying uses it as is)
+    private const float WalkSprint = 1.6f;
     private const float JumpSpeed = 4.8f;
     private const float PushImpulse = 2f;
     private const float GroundTop = 0.1f;
@@ -207,7 +208,7 @@ public partial class FreeCamera : Camera3D
             return;
 
         var input = ReadInput();
-        float speed = Speed * (Input.IsKeyPressed(Key.Shift) ? WalkSprint : 1f);
+        float speed = Speed * WalkFactor * (Input.IsKeyPressed(Key.Shift) ? WalkSprint : 1f);
         if (LimitToC)
             speed = Mathf.Min(speed, 0.9f * SimClock.Instance.C);
 
@@ -222,8 +223,10 @@ public partial class FreeCamera : Camera3D
         var v = _walker.Velocity;
         bool onFloor = _walker.IsOnFloor();
         float accel = onFloor ? 60f : 14f;
-        v.X = Mathf.MoveToward(v.X, wish.X, accel * dt);
-        v.Z = Mathf.MoveToward(v.Z, wish.Z, accel * dt);
+        // One vector on the ground plane: per-axis steps reach zero at different times and bend the heading.
+        var ground = new Vector2(v.X, v.Z).MoveToward(new Vector2(wish.X, wish.Z), accel * dt);
+        v.X = ground.X;
+        v.Z = ground.Y;
         if (onFloor)
             v.Y = input.Y > 0 ? JumpSpeed : -0.5f;
         else

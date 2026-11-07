@@ -42,6 +42,11 @@ public partial class DelayedVisual : MeshInstance3D
     /// <summary>True while this part is drawn per pixel (Exact rays) instead of per vertex.</summary>
     public bool IsRayRendered { get; private set; }
 
+    // Names used every frame, converted once: a C# string becomes a new StringName on every call otherwise.
+    private static readonly StringName LinBound = "lin_bound", AngBound = "ang_bound", IvCount = "iv_count",
+        IvSphere = "iv_sphere", IvK = "iv_k", RectParam = "rect", SpeedBound = "speed_bound", Suppress = "suppress";
+
+    private float _lastLinear = -1f, _lastAngular = -1f;
     private ShaderMaterial _material = null!;
     private readonly List<MeshInstance3D> _extraImages = new();
     private float _radius;
@@ -125,14 +130,15 @@ public partial class DelayedVisual : MeshInstance3D
         if (Mathf.Abs(bound - _speedBound) > 0.02f * Mathf.Max(bound, 0.1f))
         {
             _speedBound = bound;
-            _material.SetShaderParameter("speed_bound", bound);
+            _material.SetShaderParameter(SpeedBound, bound);
             foreach (var extra in _extraImages)
-                ((ShaderMaterial)extra.MaterialOverride).SetShaderParameter("speed_bound", bound);
+                ((ShaderMaterial)extra.MaterialOverride).SetShaderParameter(SpeedBound, bound);
         }
 
         // Roughly one extra image per 1.25 c of speed, since a circling point passes its own light
         // about twice per turn and turns (speed / c) / pi times while the light crosses the object.
-        IsRayRendered = bound >= c && fast == FastPartRendering.Rays && _shape != null;
+        IsRayRendered = _shape != null && Mode == SolveMode.Shader
+            && (fast == FastPartRendering.RaysAlways || (fast == FastPartRendering.Rays && bound >= c));
         ImageCount = bound < c || IsRayRendered
             ? 1
             : Mathf.Clamp(1 + Mathf.CeilToInt(0.8f * bound / c), 1, GameSettings.MaxImages);
@@ -141,7 +147,7 @@ public partial class DelayedVisual : MeshInstance3D
         if (_suppressed != IsRayRendered)
         {
             _suppressed = IsRayRendered;
-            _material.SetShaderParameter("suppress", IsRayRendered);
+            _material.SetShaderParameter(Suppress, IsRayRendered);
         }
 
         while (_extraImages.Count < ImageCount - 1)
@@ -166,8 +172,14 @@ public partial class DelayedVisual : MeshInstance3D
 
         var track = Track!;
         float linear = track.PeakLinearSpeed * 1.05f + 0.01f;
-        _rayMaterial!.SetShaderParameter("lin_bound", linear);
-        _rayMaterial.SetShaderParameter("ang_bound", track.PeakAngularSpeed * 1.05f + 0.001f);
+        float angular = track.PeakAngularSpeed * 1.05f + 0.001f;
+        if (linear != _lastLinear || angular != _lastAngular)
+        {
+            _lastLinear = linear;
+            _lastAngular = angular;
+            _rayMaterial!.SetShaderParameter(LinBound, linear);
+            _rayMaterial.SetShaderParameter(AngBound, angular);
+        }
         UploadIntervals(track, linear);
     }
 
@@ -196,9 +208,52 @@ public partial class DelayedVisual : MeshInstance3D
                 _intervalRanges[i] = new Vector2((float)(iv.KNewest + offset), (float)(iv.KOldest + offset));
             }
         }
-        _rayMaterial!.SetShaderParameter("iv_count", count);
-        _rayMaterial.SetShaderParameter("iv_sphere", _intervalSpheres);
-        _rayMaterial.SetShaderParameter("iv_k", _intervalRanges);
+        _rayMaterial!.SetShaderParameter(IvCount, count);
+        _rayMaterial.SetShaderParameter(IvSphere, _intervalSpheres);
+        _rayMaterial.SetShaderParameter(IvK, _intervalRanges);
+        var rect = ScreenRect(camera, count);
+        _rayMaterial.SetShaderParameter(RectParam, rect);
+        _rayProxy!.Visible = rect.X < rect.Z && rect.Y < rect.W; // an empty rectangle: the part is off screen
+    }
+
+    /// <summary>
+    /// Screen rectangle (NDC min xy, max xy) that covers every interval sphere, so the quad only shades pixels
+    /// where a ray can hit the part. The whole screen when the camera is inside or near a sphere.
+    /// </summary>
+    private Vector4 ScreenRect(Camera3D? camera, int count)
+    {
+        var full = new Vector4(-1, -1, 1, 1);
+        if (camera == null)
+            return full;
+        if (count == 0)
+            return Vector4.Zero;
+
+        var view = camera.GlobalTransform.AffineInverse();
+        var proj = camera.GetCameraProjection();
+        float sx = proj.X.X, sy = proj.Y.Y; // NDC per unit of x/depth and y/depth
+        var min = new Vector2(float.MaxValue, float.MaxValue);
+        var max = new Vector2(float.MinValue, float.MinValue);
+        for (int i = 0; i < count; i++)
+        {
+            var sph = _intervalSpheres[i];
+            var v = view * new Vector3(sph.X, sph.Y, sph.Z);
+            float near = -v.Z - sph.W; // depth of the sphere's nearest point
+            if (near <= camera.Near * 1.5f)
+                return full; // the camera is inside or at the sphere: no useful bound
+            // A point d from the centre (|d| <= radius) moves its NDC by at most radius (scale + |centre NDC|) / nearest
+            // depth: sideways by d, and by the depth change times the view angle (conservative).
+            float cx = sx * v.X / -v.Z, cy = -sy * v.Y / -v.Z; // clip-space Y points down in the renderer
+            float hx = sph.W * (sx + Mathf.Abs(cx)) / near, hy = sph.W * (sy + Mathf.Abs(cy)) / near;
+            min = min.Min(new Vector2(cx - hx, cy - hy));
+            max = max.Max(new Vector2(cx + hx, cy + hy));
+        }
+
+        const float pad = 0.02f;
+        min -= new Vector2(pad, pad);
+        max += new Vector2(pad, pad);
+        if (max.X <= -1f || min.X >= 1f || max.Y <= -1f || min.Y >= 1f)
+            return Vector4.Zero; // entirely outside the screen
+        return new Vector4(Mathf.Max(min.X, -1f), Mathf.Max(min.Y, -1f), Mathf.Min(max.X, 1f), Mathf.Min(max.Y, 1f));
     }
 
     private void CreateRayProxy()

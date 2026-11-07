@@ -1,7 +1,7 @@
 // Per-pixel retarded rendering for parts at or above light speed ("Exact rays").
 // GPU twin of src/History/RetardedRay.cs -- keep the two in step.
 //
-// Drawn on a full-screen quad. Each pixel follows its light ray back from the camera: at time t_s the ray is
+// Drawn on a quad stretched over the screen rectangle that bounds the part's interval spheres. Each pixel follows its light ray back from the camera: at time t_s the ray is
 // c (t_now - t_s) away. The first time that point lies inside the moving shape is the surface the pixel
 // shows, so every image, fold and occlusion falls out directly, with no matching of vertices between images.
 //
@@ -24,6 +24,7 @@ uniform float ang_bound = 0.0; // upper bound on the spin, rad/s
 uniform float obj_radius = 1.0; // origin to farthest point of the shape
 
 // Stretches of history where the part can be seen, newest first. RetardedRay.MaxIntervals.
+uniform vec4 rect = vec4(-1.0, -1.0, 1.0, 1.0); // NDC min xy, max xy of where the part can appear
 uniform int iv_count = 0;
 uniform vec4 iv_sphere[16]; // centre xyz, radius: where the part is during the stretch
 uniform vec2 iv_k[16]; // newest, oldest fractional sample index (global, like the history texture)
@@ -131,7 +132,8 @@ bool march(float k_start, float k_min, vec3 cam, vec3 dir, out float k_hit, out 
 }
 
 void vertex() {
-	POSITION = vec4(VERTEX.xy, 1.0, 1.0); // cover the whole screen
+	// The quad (-1..1) is stretched over the screen rectangle that can contain the part.
+	POSITION = vec4(mix(rect.xy, rect.zw, VERTEX.xy * 0.5 + 0.5), 1.0, 1.0);
 }
 
 void fragment() {

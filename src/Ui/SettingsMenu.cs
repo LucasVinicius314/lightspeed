@@ -163,13 +163,14 @@ public partial class SettingsMenu : CanvasLayer
             "How far back every object's motion is remembered. Light older than this is gone, so you can see objects up to " +
             "c times this far away. Longer needs more memory (shown: video plus system). Applied a moment after you let go.");
         Choice("Fast parts",
-            new[] { "One image (tears)", "Light Echoes", "Exact rays" },
+            new[] { "One image (tears)", "Light Echoes", "Exact rays", "Exact rays (all parts)" },
             () => (int)GameSettings.FastParts,
             i => { GameSettings.FastParts = (FastPartRendering)i; GameSettings.Commit(); },
             "How a part that outruns its own light is drawn. One image: the old single answer, which tears. " +
             "Light Echoes: the mesh is drawn once per image, with each vertex linked to its image of the same rank " +
             "(breaks down when close to the part). Exact rays: every pixel traces its own light ray back to the " +
-            "moving shape (boxes, spheres and cylinders; other meshes use Light Echoes).");
+            "moving shape (boxes, spheres and cylinders; other meshes use Light Echoes). Exact rays (all parts): the same, but for every part at any speed, so nothing " +
+            "switches renderer when it speeds up or slows down; costs more per frame.");
         Slider("Max echoes per part", 2, 16, 1,
             () => GameSettings.MaxImages,
             v => { GameSettings.MaxImages = (int)v; GameSettings.Commit(); },
@@ -255,7 +256,7 @@ public partial class SettingsMenu : CanvasLayer
             () => GameSettings.FlySpeed,
             v => { GameSettings.FlySpeed = (float)v; GameSettings.Commit(); },
             v => $"{v:0.0} m/s",
-            "Fly and walk speed. The FPV drone is thrust-driven and ignores it.");
+            "Fly speed; walking is half of it (sprint is a bit faster). The FPV drone is thrust-driven and ignores it.");
         Toggle("Keep camera below c",
             () => GameSettings.LimitToC,
             v => { GameSettings.LimitToC = v; GameSettings.Commit(); },
