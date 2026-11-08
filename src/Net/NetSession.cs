@@ -217,6 +217,13 @@ public partial class NetSession : Node
 
     // ------------------------------------------------------------------ starting and stopping
 
+    /// <summary>The address typed in the menu, else the server remembered on this machine (shared by every game).</summary>
+    private static string ServerUrl()
+    {
+        string url = GameSettings.NetServerUrl.Trim();
+        return url.Length > 0 ? url : P2PIdentity.ServerUrl() ?? "";
+    }
+
     public void Host() => Begin(host: true, code: null);
 
     public void Join(string code) => Begin(host: false, code: code);
@@ -225,7 +232,7 @@ public partial class NetSession : Node
     {
         if (State != Role.Offline)
             return;
-        string url = GameSettings.NetServerUrl.Trim();
+        string url = ServerUrl();
         if (url.Length == 0)
         {
             SetStatus("Enter the server address first.");
@@ -293,7 +300,7 @@ public partial class NetSession : Node
     {
         if (_browser != null)
             return;
-        string url = GameSettings.NetServerUrl.Trim();
+        string url = ServerUrl();
         if (url.Length == 0)
         {
             SetFriendStatus("Enter the server address first.");
