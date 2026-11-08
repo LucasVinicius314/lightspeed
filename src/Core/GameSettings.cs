@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Linq;
 using Godot;
+using P2PSignaling;
 
 namespace Lightspeed.Core;
 
@@ -91,7 +92,11 @@ public static class GameSettings
     /// <summary>Address of the p2p-signaling-server, for example https://signal.example.com. Empty until the player sets it.</summary>
     public static string NetServerUrl { get; set; } = "";
 
-    /// <summary>The name other players see in the roster.</summary>
+    /// <summary>
+    /// The name other players see in the roster. Shared by every game on this machine through the p2p library
+    /// (~/.p2p-signaling-server/name): loaded from there at start, and saved there by <see cref="SetPlayerName"/> when the
+    /// player types a new one. `--net-name=` overrides it for one run without touching the shared file.
+    /// </summary>
     public static string PlayerName { get; set; } = "Player";
 
     /// <summary>Host: make the room visible to everyone who has this machine's id in their friends file (see P2PIdentity).</summary>
@@ -109,7 +114,10 @@ public static class GameSettings
         Persist = !args.Any(a => a.StartsWith("--screenshot") || a == "--no-settings");
         ResetValues();
         if (Persist)
+        {
             Load();
+            LoadSharedName();
+        }
 
         foreach (var arg in args)
         {
@@ -199,6 +207,28 @@ public static class GameSettings
         Fullscreen = (bool)config.GetValue("display", "fullscreen", Fullscreen);
     }
 
+    /// <summary>
+    /// Takes the name from the machine's shared name file. A name this game saved in its own settings before the shared file
+    /// existed is carried over to it (only when the shared file is missing, so a name chosen elsewhere is never replaced).
+    /// </summary>
+    private static void LoadSharedName()
+    {
+        var shared = P2PIdentity.PlayerName();
+        if (shared != null)
+            PlayerName = shared;
+        else if (PlayerName != "Player")
+            P2PIdentity.RememberPlayerName(PlayerName);
+    }
+
+    /// <summary>The player typed a new name: use it now and save it for every game on this machine.</summary>
+    public static void SetPlayerName(string name)
+    {
+        PlayerName = name;
+        if (Persist)
+            P2PIdentity.SavePlayerName(name);
+        Commit();
+    }
+
     private static void Save()
     {
         var config = new ConfigFile();
@@ -216,7 +246,6 @@ public static class GameSettings
         config.SetValue("camera", "drone_crt", DroneCrt);
         config.SetValue("camera", "drone_invert_pitch", DroneInvertPitch);
         config.SetValue("net", "server_url", NetServerUrl);
-        config.SetValue("net", "player_name", PlayerName);
         config.SetValue("net", "list_for_friends", ListForFriends);
         config.SetValue("display", "fxaa", Fxaa);
         config.SetValue("display", "vsync", Vsync);

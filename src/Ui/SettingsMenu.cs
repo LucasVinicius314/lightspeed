@@ -306,7 +306,7 @@ public partial class SettingsMenu : CanvasLayer
             "https://signal.example.com",
             "The p2p-signaling-server that introduces players. Only used to find each other; the game itself runs peer to peer.");
         TextField("Your name", () => GameSettings.PlayerName,
-            v => { GameSettings.PlayerName = v; GameSettings.Commit(); }, "Player");
+            v => GameSettings.SetPlayerName(v), "Player");
 
         SubSection("Host a game");
         var host = new Button { Text = "Host a game", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, FocusMode = Control.FocusModeEnum.None };
